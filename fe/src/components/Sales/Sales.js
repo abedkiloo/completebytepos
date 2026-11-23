@@ -443,11 +443,7 @@ const Sales = () => {
     <PageShell>
         <PageHeader
           title="Sales history"
-          description={
-            canRefund
-              ? 'Review transactions, reprint receipts, or void mistaken sales. Download PDF or Excel for the current filters. Voiding a sale needs admin approval before stock and books change.'
-              : 'Review completed transactions, reprint receipts, and download PDF or Excel for the current filters.'
-          }
+          description="Open a sale for the receipt. Void and roll back are on that sale."
         >
           {isModuleFeatureEnabled('sales', 'history_export', true) ? (
             <ReportExportButtons slug="sales-history" params={exportParams} />
@@ -706,12 +702,13 @@ const Sales = () => {
                           <span className="inline-flex items-center">
                             <Button
                               variant="ghost"
-                              size="sm"
-                              className="text-destructive"
+                              size="icon"
+                              className="h-8 w-8 text-destructive"
+                              aria-label="Roll back"
+                              title="Roll back"
                               onClick={() => openRollbackDialog(sale)}
                             >
-                              <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                              Roll back
+                              <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
                             <HelpHint actionKey="sale_rollback" />
                           </span>
@@ -720,12 +717,13 @@ const Sales = () => {
                           <span className="inline-flex items-center">
                             <Button
                               variant="ghost"
-                              size="sm"
-                              className="text-destructive"
+                              size="icon"
+                              className="h-8 w-8 text-destructive"
+                              aria-label="Void / refund"
+                              title="Void / refund"
                               onClick={() => openRefundDialog(sale)}
                             >
-                              <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                              Void / refund
+                              <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
                             <HelpHint actionKey="sale_refund" />
                           </span>
@@ -733,16 +731,19 @@ const Sales = () => {
                         {canUnvoid && saleIsUnvoidable(sale) && (
                           <Button
                             variant="ghost"
-                            size="sm"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label={sale.status === 'cancelled' ? 'Uncancel' : 'Unvoid'}
+                            title={sale.status === 'cancelled' ? 'Uncancel' : 'Unvoid'}
                             onClick={() => handleViewSale(sale)}
                           >
-                            <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                            {sale.status === 'cancelled' ? 'Uncancel' : 'Unvoid'}
+                            <RotateCcw className="h-3.5 w-3.5" />
                           </Button>
                         )}
                         <Button
                           variant="ghost"
                           size="sm"
+                          className="h-8 px-2"
                           onClick={() => handleViewReceipt(sale)}
                           disabled={
                             saleIsAwaitingApproval(sale) || saleNeedsSalespersonAction(sale)
@@ -752,7 +753,7 @@ const Sales = () => {
                               ? 'Fix this sale on POS and send it again before issuing a receipt.'
                               : saleIsAwaitingApproval(sale)
                               ? SALE_AWAITING_APPROVAL_MESSAGE
-                              : undefined
+                              : 'Receipt'
                           }
                         >
                           Receipt

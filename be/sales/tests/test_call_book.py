@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from accounts.models import Role, UserProfile
+from accounts.models import AuditLog, Role, UserProfile
 from accounts.role_definitions import (
     ROLE_DELIVERY_AGENT,
     ROLE_FIELD_AGENT,
@@ -425,6 +425,12 @@ class CallBookSecurityTests(SalesAPITestCase):
         self.assertEqual(marked.status_code, status.HTTP_200_OK)
         self.assertEqual(plan.status_code, status.HTTP_403_FORBIDDEN)
         self.assertNotIn('0718000041', plan.content.decode())
+        logged = AuditLog.objects.get(action='call_marked', object_id=str(shop.id))
+        self.assertEqual(logged.changes['outcome'], 'called')
+        self.assertEqual(logged.changes['request_summary'], 'Piping')
+        self.assertNotIn('0718000041', str(logged.changes))
+        self.assertNotIn('0718000041', logged.object_repr)
+        self.assertFalse(AuditLog.objects.filter(action='call_plan_saved').exists())
 
     def test_bad_outcome_does_not_echo_the_phone(self):
         shop = _customer('Quiet Shop', '0718000042')
@@ -641,7 +647,7 @@ class CallBookCoverageTests(SuperAdminAPITestCase):
         from datetime import time
         from types import SimpleNamespace
 
-        from accounts.models import UserProfile
+        from accounts.models import AuditLog, UserProfile
         from sales.call_book import (
             _combine_follow_up,
             _display_name,

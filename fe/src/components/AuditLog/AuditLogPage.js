@@ -104,6 +104,8 @@ const BULKY_CHANGE_KEYS = new Set([
   '__deleted__',
 ]);
 
+const AUDIT_PAGE_SIZE = 50;
+
 const MODULE_OPTIONS = [
   { value: '', label: 'All modules' },
   { value: 'sales', label: 'Sales / POS' },
@@ -295,6 +297,15 @@ export function summarizeAuditChanges(changes, maxItems = 4) {
     if (finance.reference) parts.push(`ref ${finance.reference}`);
     if (finance.customerName) parts.push(finance.customerName);
     else if (finance.saleNumber) parts.push(finance.saleNumber);
+    if (Array.isArray(changes.lines) && changes.lines.length) {
+      const bits = changes.lines.slice(0, 4).map((line) => {
+        const name = line?.product || 'Item';
+        const variant = line?.variant ? ` ${line.variant}` : '';
+        return `${name}${variant} × ${line?.quantity ?? ''}`;
+      });
+      parts.push(bits.join(', '));
+      if (changes.lines.length > 4) parts.push(`+${changes.lines.length - 4} more`);
+    }
     if (changes.via && changes.lifecycle === 'money_posted') {
       parts.push(changes.via === 'approval' ? 'via approval' : 'direct');
     }
@@ -451,15 +462,26 @@ export default function AuditLogPage() {
   const [module, setModule] = useState('');
   const [clientChannel, setClientChannel] = useState('');
   const [userId, setUserId] = useState('');
-  const [dateFrom, setDateFrom] = useState(todayIsoDate);
-  const [dateTo, setDateTo] = useState(todayIsoDate);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [timeFrom, setTimeFrom] = useState('');
   const [timeTo, setTimeTo] = useState('');
   const [users, setUsers] = useState([]);
   const [facetModules, setFacetModules] = useState([]);
   const [facetActions, setFacetActions] = useState([]);
   const { ordering, setOrdering } = useListOrdering();
+  const [moreFilters, setMoreFilters] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
+  const filterKey = [
+    q, action, module, clientChannel, userId, dateFrom, dateTo, timeFrom, timeTo, ordering,
+  ].join('|');
+  const [filterKeySeen, setFilterKeySeen] = useState(filterKey);
+  if (filterKeySeen !== filterKey) {
+    setFilterKeySeen(filterKey);
+    if (page !== 1) setPage(1);
+  }
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
@@ -486,16 +508,20 @@ export default function AuditLogPage() {
       if (dateTo) params.date_to = dateTo;
       if (timeFrom) params.time_from = timeFrom;
       if (timeTo) params.time_to = timeTo;
+      params.page = page;
+      params.page_size = AUDIT_PAGE_SIZE;
       const res = await auditLogAPI.list(params);
       const data = res.data?.results ?? res.data ?? [];
-      setRows(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setRows(list);
+      setTotal(Number(res.data?.count) || list.length);
     } catch {
       toast.error('Could not load audit log');
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [q, action, module, clientChannel, userId, dateFrom, dateTo, timeFrom, timeTo, ordering]);
+  }, [q, action, module, clientChannel, userId, dateFrom, dateTo, timeFrom, timeTo, ordering, page]);
 
   useEffect(() => {
     if (!allowed) return undefined;
@@ -568,12 +594,12 @@ export default function AuditLogPage() {
     <PageShell>
       <PageHeader
         title="Audit log"
-        description="Who did what, on web or the mobile app, and for money events: amount, method, reference, and whether cash was only submitted, approved, or actually posted. Click a row for full detail."
+        description="Newest first. Open a row for the full values."
         icon={ScrollText}
       />
       <Card>
         <CardContent className="space-y-4 pt-6">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[200px] flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -593,13 +619,6 @@ export default function AuditLogPage() {
                 onChange={(e) => setDateFrom(e.target.value)}
               />
             </label>
-            <Input
-              type="time"
-              aria-label="From time"
-              className="h-9 w-auto"
-              value={timeFrom}
-              onChange={(e) => setTimeFrom(e.target.value)}
-            />
             <label className="flex items-center gap-1 text-sm text-muted-foreground">
               <span className="sr-only">To date</span>
               <Input
@@ -610,6 +629,54 @@ export default function AuditLogPage() {
                 onChange={(e) => setDateTo(e.target.value)}
               />
             </label>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                const today = todayIsoDate();
+                setDateFrom(today);
+                setDateTo(today);
+                setTimeFrom('');
+                setTimeTo('');
+              }}
+            >
+              Today
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+                setTimeFrom('');
+                setTimeTo('');
+                setUserId('');
+                setModule('');
+                setClientChannel('');
+                setAction('');
+                setQ('');
+              }}
+            >
+              All time
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              aria-expanded={moreFilters}
+              onClick={() => setMoreFilters((open) => !open)}
+            >
+              Filters
+            </Button>
+          </div>
+          {moreFilters ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              type="time"
+              aria-label="From time"
+              className="h-9 w-auto"
+              value={timeFrom}
+              onChange={(e) => setTimeFrom(e.target.value)}
+            />
             <Input
               type="time"
               aria-label="To time"
@@ -712,37 +779,8 @@ export default function AuditLogPage() {
             <Button type="button" onClick={load}>
               Apply
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setDateFrom('');
-                setDateTo('');
-                setTimeFrom('');
-                setTimeTo('');
-                setUserId('');
-                setModule('');
-                setClientChannel('');
-                setAction('');
-                setQ('');
-              }}
-            >
-              All time
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                const today = todayIsoDate();
-                setDateFrom(today);
-                setDateTo(today);
-                setTimeFrom('');
-                setTimeTo('');
-              }}
-            >
-              Today
-            </Button>
           </div>
+          ) : null}
           {loading ? (
             <PageLoading label="Loading audit entries…" />
           ) : rows.length === 0 ? (
@@ -753,18 +791,13 @@ export default function AuditLogPage() {
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="py-2 pr-3">When</th>
-                    <th className="py-2 pr-3">User</th>
-                    <th className="py-2 pr-3">Client</th>
-                    <th className="py-2 pr-3">Action</th>
-                    <th className="py-2 pr-3">Amount</th>
-                    <th className="py-2 pr-3">Method</th>
-                    <th className="py-2 pr-3">Object</th>
-                    <th className="py-2 pr-3">Summary</th>
+                    <th className="py-2 pr-3">Who</th>
+                    <th className="py-2 pr-3">What</th>
+                    <th className="py-2 pr-3">Detail</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => {
-                    const finance = extractFinanceFields(row.changes);
                     const channel =
                       row.client_channel ||
                       row.changes?.client_channel ||
@@ -796,34 +829,23 @@ export default function AuditLogPage() {
                       <td className="py-2 pr-3 whitespace-nowrap tabular-nums">
                         {formatDateTime(row.created_at)}
                       </td>
-                      <td className="py-2 pr-3">{row.username_snapshot || '—'}</td>
                       <td className="py-2 pr-3">
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] uppercase tracking-wide"
-                        >
-                          {channelLabel}
-                        </Badge>
+                        <div>{row.username_snapshot || '—'}</div>
+                        <div className="text-xs text-muted-foreground">{channelLabel}</div>
                       </td>
                       <td className="py-2 pr-3">
                         <Badge variant="outline">{actionLabel(row.action)}</Badge>
                       </td>
-                      <td className="py-2 pr-3 whitespace-nowrap tabular-nums font-medium">
-                        {finance?.amount
-                          ? formatMoneyish(finance.amount) || finance.amount
-                          : '—'}
-                      </td>
-                      <td className="py-2 pr-3 whitespace-nowrap uppercase text-xs">
-                        {finance?.method || '—'}
-                      </td>
-                      <td className="py-2 pr-3 max-w-[14rem] truncate" title={row.object_repr}>
-                        {row.object_repr || row.object_type || '—'}
-                      </td>
-                      <td
-                        className="py-2 pr-3 max-w-[18rem] truncate text-muted-foreground"
-                        title={summarizeAuditChanges(row.changes)}
-                      >
-                        {summarizeAuditChanges(row.changes)}
+                      <td className="py-2 pr-3 max-w-[28rem]">
+                        <div className="truncate font-medium" title={row.object_repr}>
+                          {row.object_repr || row.object_type || '—'}
+                        </div>
+                        <div
+                          className="truncate text-muted-foreground"
+                          title={summarizeAuditChanges(row.changes)}
+                        >
+                          {summarizeAuditChanges(row.changes)}
+                        </div>
                       </td>
                     </tr>
                     );
@@ -832,6 +854,36 @@ export default function AuditLogPage() {
               </table>
             </div>
           )}
+          {total > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="text-muted-foreground">
+                {(page - 1) * AUDIT_PAGE_SIZE + 1}
+                –
+                {Math.min(page * AUDIT_PAGE_SIZE, total)}
+                {' of '}
+                {total}
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={page <= 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  data-testid="audit-next"
+                  disabled={page * AUDIT_PAGE_SIZE >= total}
+                  onClick={() => setPage((current) => current + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

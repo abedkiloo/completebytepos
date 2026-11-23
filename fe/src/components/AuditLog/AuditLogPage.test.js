@@ -116,6 +116,17 @@ describe('audit change helpers', () => {
       })
     ).toContain('Total: 100.00');
 
+    expect(
+      summarizeAuditChanges({
+        lifecycle: 'money_posted',
+        amount: '1500',
+        lines: [
+          { product: 'Round stand', quantity: 2, variant: '' },
+          { product: 'Hinge', quantity: 4, variant: '' },
+        ],
+      })
+    ).toContain('Round stand × 2');
+
     expect(parseAuditChanges(null).rows).toEqual([]);
   });
 
@@ -237,7 +248,12 @@ describe('AuditLogPage', () => {
     await waitFor(() => {
       expect(auditLogAPI.list).toHaveBeenCalled();
     });
+    const first = auditLogAPI.list.mock.calls[0][0] || {};
+    expect(first.page).toBe(1);
+    expect(first.page_size).toBe(50);
+    expect(first.date_from).toBeUndefined();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Filters' }));
     fireEvent.change(screen.getByLabelText('From date'), {
       target: { value: '2026-10-01' },
     });

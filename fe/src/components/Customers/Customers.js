@@ -757,13 +757,13 @@ const Customers = () => {
           >
             <MapPin className="h-4 w-4 text-muted-foreground" />
             <span>
-              Showing customers with a correct location. Pick county → sub-county → ward to narrow
+              Correct locations
               {filterWard
-                ? ` to ${filterWard}, ${filterSubCounty}, ${filterCounty}`
+                ? ` in ${filterWard}`
                 : filterSubCounty
-                  ? ` to ${filterSubCounty}, ${filterCounty}`
+                  ? ` in ${filterSubCounty}`
                   : filterCounty
-                    ? ` to ${filterCounty}`
+                    ? ` in ${filterCounty}`
                     : ''}
               .
               {!loading ? (
@@ -784,8 +784,7 @@ const Customers = () => {
           >
             <MapPin className="h-4 w-4 text-warning" />
             <span>
-              Showing customers with blank or mismatched location. Open <strong>Edit</strong> and
-              pick the correct county, sub-county, and ward from our list.
+              These locations need a correction. Open Edit and pick the county again.
               {!loading ? (
                 <>
                   {' '}

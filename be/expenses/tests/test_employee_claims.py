@@ -9,7 +9,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.models import Role, UserProfile
+from accounts.models import AuditLog, Role, UserProfile
 from accounts.role_definitions import (
     ROLE_DIRECTOR,
     ROLE_MANAGER,
@@ -135,6 +135,13 @@ class EmployeeClaimTests(APITestCase):
         self.assertEqual(Decimal(decided.data['amount']), Decimal('250.50'))
         self.assertTrue(decided.data['is_claim'])
         self.assertNotIn(OTHER_PHONE, str(decided.data))
+        filed_log = AuditLog.objects.get(action='expense_claim_filed', object_id=str(claim_id))
+        decided_log = AuditLog.objects.get(action='expense_claim_decided', object_id=str(claim_id))
+        self.assertEqual(filed_log.changes['amount'], '250.50')
+        self.assertEqual(filed_log.changes['description'], 'Fare')
+        self.assertEqual(decided_log.changes['status'], 'approved')
+        self.assertNotIn(OTHER_PHONE, str(filed_log.changes))
+        self.assertNotIn(OTHER_PHONE, str(decided_log.changes))
 
         self._auth(self.admin)
         blocked = self.client.post(f'/api/expenses/{claim_id}/approve/', {}, format='json')
@@ -218,6 +225,9 @@ class EmployeeClaimTests(APITestCase):
             self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
             self.assertNotIn(OTHER_PHONE, str(blocked.data))
             self.assertEqual(Expense.objects.count(), before)
+            self.assertFalse(
+                AuditLog.objects.filter(action='expense_claim_filed').exists()
+            )
             put = self.client.put('/api/expenses/claims/', {'amount': '1.00'}, format='json')
             self.assertIn(put.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_405_METHOD_NOT_ALLOWED))
         finally:

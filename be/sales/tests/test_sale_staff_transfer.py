@@ -2,8 +2,12 @@
 
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
-from django.contrib.auth.models import User
+from types import SimpleNamespace
+
+from django.contrib.auth.models import AnonymousUser, User
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
 from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -14,6 +18,15 @@ from employees.models import Employee
 from payroll.adapters.commission import _staff_sale_q
 from payroll.models import PayrollRun, Payslip
 from sales.models import Sale
+from sales.sale_staff_transfer import (
+    NOTE_MAX,
+    _append_note,
+    _month_pay_is_locked,
+    _staff_name,
+    staff_choices,
+    transfer_sale_staff,
+    user_may_move_sale_staff,
+)
 from settings.models import ModuleFeature, ModuleSettings
 from utils.tests.api_test_base import SuperAdminAPITestCase
 
@@ -73,6 +86,7 @@ class SaleStaffTransferTests(SuperAdminAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data['to_staff_name'], 'Paul')
+        self.assertIn('Salesperson moved from Rita to Paul', Sale.objects.get(pk=sale.id).notes)
         self.assertEqual(response.data['from_staff_name'], 'Rita')
         self.assertNotIn(STAFF_PHONE, str(response.data))
         sale.refresh_from_db()
@@ -170,6 +184,9 @@ class SaleStaffTransferTests(SuperAdminAPITestCase):
                 format='json',
             )
             self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
+            hidden = self.client.get('/api/sales/staff/', {'q': 'Paul'})
+            self.assertEqual(hidden.status_code, status.HTTP_403_FORBIDDEN)
+            self.assertNotIn(STAFF_PHONE, str(hidden.data))
             sale.refresh_from_db()
             self.assertEqual(sale.cashier_id, self.rita.id)
         finally:
@@ -222,6 +239,23 @@ class SaleStaffTransferTests(SuperAdminAPITestCase):
         sale.refresh_from_db()
         self.assertEqual(sale.served_by_id, self.rita.id)
 
+    def test_a_failed_audit_write_still_moves_the_sale(self):
+        sale = _sale(self.rita, number='S-AUDIT')
+        with patch(
+            'utils.audit_events.log_sale_staff_transferred',
+            side_effect=RuntimeError('audit down'),
+        ):
+            response = self.client.post(
+                f'/api/sales/{sale.id}/transfer-staff/',
+                {'user_id': self.paul.id},
+                format='json',
+            )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertNotIn(STAFF_PHONE, str(response.data))
+        sale.refresh_from_db()
+        self.assertEqual(sale.served_by_id, self.paul.id)
+        self.assertEqual(sale.amount_paid, Decimal('500.00'))
+
     def test_staff_search_returns_names_only(self):
         Employee.objects.create(
             employee_id='EMP-PAUL',
@@ -256,3 +290,44 @@ class SaleStaffTransferTests(SuperAdminAPITestCase):
         self.assertEqual(moved.count(), 40)
         self.assertTrue(all(row.cashier_id == self.paul.id and row.served_by_id == self.paul.id for row in moved))
         self.assertEqual(sum(row.total for row in moved), Decimal('60000.00'))
+
+    def test_service_refuses_bad_ids_unfinished_sales_and_long_notes(self):
+        self.assertFalse(user_may_move_sale_staff(None))
+        self.assertFalse(user_may_move_sale_staff(AnonymousUser()))
+        sale = _sale(self.rita, number='S-UNIT')
+        with self.assertRaises(ValidationError):
+            transfer_sale_staff(sale.id, self.paul.id, self.admin, reason='n' * 201)
+        with self.assertRaises(ValidationError):
+            transfer_sale_staff(9_999_999, self.paul.id, self.admin)
+        with self.assertRaises(ValidationError):
+            transfer_sale_staff('not-a-sale', self.paul.id, self.admin)
+        holding = _sale(self.rita, number='S-UNIT-HOLD', status='holding')
+        with self.assertRaises(ValidationError):
+            transfer_sale_staff(holding.id, self.paul.id, self.admin)
+        with self.assertRaises(ValidationError):
+            transfer_sale_staff(sale.id, 'paul', self.admin)
+        with self.assertRaises(ValidationError):
+            transfer_sale_staff(sale.id, 0, self.admin)
+        with self.assertRaises(PermissionDenied):
+            transfer_sale_staff(sale.id, self.paul.id, self.manager)
+        undated = SimpleNamespace(
+            occurred_at=None, created_at=None, cashier_id=self.rita.id, served_by_id=None,
+        )
+        self.assertFalse(_month_pay_is_locked(undated, self.paul.id))
+        sale.notes = 'old ' * 1200
+        sale.served_by = None
+        sale.save(update_fields=['notes', 'served_by'])
+        moved = transfer_sale_staff(sale.id, self.paul.id, self.admin, reason='Counter mix-up')
+        self.assertLessEqual(len(moved['sale'].notes), NOTE_MAX)
+        self.assertIn('Salesperson moved from Rita to Paul', moved['sale'].notes)
+        self.assertTrue(moved['sale'].notes.endswith('Reason: Counter mix-up'))
+        self.assertEqual(_staff_name(None), 'Staff')
+        self.assertEqual(len(_append_note('x' * 5000, None, self.paul, '')), NOTE_MAX)
+        blank = staff_choices('')
+        self.assertLessEqual(len(blank), 20)
+        self.assertTrue(all('phone' not in row for row in blank))
+        sale.refresh_from_db()
+        self.assertEqual(sale.cashier_id, self.paul.id)
+        self.assertEqual(sale.served_by_id, self.paul.id)
+        self.assertEqual(sale.total, Decimal('1500.00'))
+        self.assertEqual(sale.amount_paid, Decimal('500.00'))

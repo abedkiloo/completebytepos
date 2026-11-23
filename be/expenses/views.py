@@ -340,6 +340,8 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         except ValidationError as e:
             detail = getattr(e, 'detail', None) or str(e)
             return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+        from utils.audit_events import log_expense_write
+        log_expense_write(request, expense, kind='filed')
         return Response(self.get_serializer(expense).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='decide-claim')
@@ -374,6 +376,8 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         except ValidationError as e:
             detail = getattr(e, 'detail', None) or str(e)
             return Response({'error': detail}, status=status.HTTP_400_BAD_REQUEST)
+        from utils.audit_events import log_expense_write
+        log_expense_write(request, decided, kind='decided')
         return Response(self.get_serializer(decided).data)
 
     @action(detail=True, methods=['post'])
@@ -436,6 +440,8 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             )
         expense.needs_redo = flag
         expense.save(update_fields=['needs_redo', 'updated_at'])
+        from utils.audit_events import log_expense_write
+        log_expense_write(request, expense, kind='redo')
         return Response(self.get_serializer(expense).data)
 
     @action(detail=True, methods=['post'])
@@ -443,6 +449,8 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         expense = self.get_object()
         try:
             queued = self.expense_service.resubmit_expense(expense, request.user)
+            from utils.audit_events import log_expense_write
+            log_expense_write(request, queued, kind='resubmitted')
             return Response(self.get_serializer(queued).data)
         except (ValidationError, DjangoValidationError) as e:
             detail = getattr(e, 'detail', None) or str(e)
@@ -457,6 +465,8 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             voided = self.expense_service.void_expense(
                 expense, reason=reason, user=request.user
             )
+            from utils.audit_events import log_expense_write
+            log_expense_write(request, voided, kind='voided')
         except (ValidationError, DjangoValidationError) as e:
             payload = getattr(e, 'message_dict', None)
             if payload:

@@ -315,7 +315,7 @@ export default function DebtManagementPage() {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="flex flex-wrap gap-2">
         {agingCards.map((bucket) => (
           <button
             key={bucket.key}
@@ -324,17 +324,17 @@ export default function DebtManagementPage() {
               setAgingBucket((prev) => (prev === bucket.key ? '' : bucket.key));
               setPage(1);
             }}
-            className={`rounded-lg border p-3 text-left transition-colors ${
+            className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
               agingBucket === bucket.key
                 ? 'border-primary bg-primary/5'
                 : 'hover:bg-muted/40'
             }`}
           >
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {bucket.label}
-            </p>
-            <p className="mt-1 text-lg font-bold tabular-nums">{bucket.count}</p>
-            <p className="text-sm text-muted-foreground">{formatCurrency(bucket.amount)}</p>
+            <span className="text-muted-foreground">{bucket.label}</span>
+            <span className="ml-2 font-semibold tabular-nums">{bucket.count}</span>
+            <span className="ml-2 tabular-nums text-muted-foreground">
+              {formatCurrency(bucket.amount)}
+            </span>
           </button>
         ))}
       </div>

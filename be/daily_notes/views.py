@@ -285,7 +285,7 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         try:
-            request_note_reviews(
+            reviews = request_note_reviews(
                 note=note,
                 reviewer_ids=request.data.get('user_ids') or [],
                 requested_by=user,
@@ -295,6 +295,18 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
                 {'error': validation_error_message(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        from utils.audit_events import log_note_review_write
+        log_note_review_write(
+            request,
+            note,
+            kind='requested',
+            detail={
+                'reviewer_names': [
+                    (review.reviewer.get_full_name() or review.reviewer.username)
+                    for review in reviews
+                ],
+            },
+        )
         note = self.get_queryset().get(pk=note.pk)
         return Response(self.get_serializer(note).data)
 
@@ -329,12 +341,26 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN,
             )
         try:
-            complete_note_review(review=review, comment=request.data.get('comment') or '')
+            finished = complete_note_review(
+                review=review, comment=request.data.get('comment') or '',
+            )
         except ValidationError as exc:
             return Response(
                 {'error': validation_error_message(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        from utils.audit_events import log_note_review_write
+        log_note_review_write(
+            request,
+            note,
+            kind='completed',
+            detail={
+                'reviewer_names': [
+                    finished.reviewer.get_full_name() or finished.reviewer.username
+                ],
+                'comment': finished.comment or '',
+            },
+        )
         note = self.get_queryset().get(pk=note.pk)
         return Response(self.get_serializer(note).data)
 

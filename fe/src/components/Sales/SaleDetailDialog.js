@@ -49,8 +49,7 @@ import TransferSaleStaffDialog from './TransferSaleStaffDialog';
 import { toast } from '../../utils/toast';
 import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
-import { resolveStoreName, resolveReceiptLogoUrl, DEFAULT_STORE_TAGLINE } from '../../utils/storeBranding';
-import StoreLogo from '../Shared/StoreLogo';
+import { resolveStoreName } from '../../utils/storeBranding';
 import ReceiptImageLink from '../Shared/ReceiptImageLink';
 import { salePaymentMethodLabel } from '../../utils/saleItemDisplay';
 import SaleActivityTrail from './SaleActivityTrail';
@@ -76,7 +75,6 @@ export default function SaleDetailDialog({
   const navigate = useNavigate();
   const { settings } = useStoreSettings();
   const storeName = resolveStoreName(settings);
-  const logoUrl = resolveReceiptLogoUrl(settings);
   const [showReturn, setShowReturn] = useState(false);
   const [returnReason, setReturnReason] = useState('');
   const [clearPayment, setClearPayment] = useState(false);
@@ -305,18 +303,9 @@ export default function SaleDetailDialog({
         ) : null}
 
         <div className="receipt-content space-y-4 text-sm">
-          <div className="receipt-header text-center">
-            {logoUrl ? (
-              <StoreLogo src={logoUrl} className="mx-auto mb-2 h-16 w-16 object-contain" />
-            ) : null}
-            <h3 className="text-lg font-semibold">{storeName}</h3>
-            <p className="text-xs text-muted-foreground">{DEFAULT_STORE_TAGLINE}</p>
-            <p className="text-muted-foreground">Sale receipt</p>
-          </div>
-
           <div className="receipt-info space-y-1">
             <p className="inline-flex items-center gap-1.5">
-              <strong>Sale number:</strong> {sale.sale_number}
+              <strong>{storeName}</strong>
               <SaleOriginBadge sale={sale} />
             </p>
             {saleChannelLabel(sale.client_channel) ? (

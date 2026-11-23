@@ -153,6 +153,22 @@ class CallBookMarkView(APIView):
             follow_up_on=request.data.get('follow_up_on') or '',
             follow_up_time=request.data.get('follow_up_time') or '',
         )
+        if code == 'ok':
+            from sales.models import Customer
+            from utils.audit_events import log_call_write
+            customer = Customer.objects.filter(pk=customer_id).only(
+                'id', 'name', 'customer_code',
+            ).first()
+            log_call_write(
+                request,
+                customer,
+                kind='marked',
+                detail={
+                    'outcome': payload.get('outcome') or '',
+                    'request_summary': payload.get('request_summary') or '',
+                    'follow_up_on': payload.get('follow_up_on') or '',
+                },
+            )
         http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
         return Response(payload, status=http)
 
@@ -178,6 +194,18 @@ class CallBookHoldView(APIView):
             None.
         """
         code, payload = hold_customer(customer_id=customer_id, user=request.user)
+        if code == 'ok':
+            from sales.models import Customer
+            from utils.audit_events import log_call_write
+            customer = Customer.objects.filter(pk=customer_id).only(
+                'id', 'name', 'customer_code',
+            ).first()
+            log_call_write(
+                request,
+                customer,
+                kind='held',
+                detail={'hold_minutes': payload.get('hold_minutes')},
+            )
         http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
         return Response(payload, status=http)
 
@@ -224,5 +252,17 @@ class CallBookPlanView(APIView):
             hold_minutes=request.data.get('hold_minutes', 5),
             rows=request.data.get('rows') or [],
         )
+        if code == 'ok':
+            from utils.audit_events import log_call_write
+            log_call_write(
+                request,
+                None,
+                kind='plan',
+                detail={
+                    'unlocated_weekday': payload.get('unlocated_weekday'),
+                    'hold_minutes': payload.get('hold_minutes'),
+                    'locations': len(payload.get('rows') or []),
+                },
+            )
         http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
         return Response(payload, status=http)

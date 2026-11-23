@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from accounts.models import UserProfile
+from accounts.models import AuditLog, UserProfile
 from accounts.role_definitions import ROLE_SALES, ensure_permissions, sync_default_roles
 from daily_notes.models import DailyNote, DailyNoteReview
 from settings.models import ModuleFeature, ModuleSettings
@@ -75,6 +75,12 @@ class DailyNoteReviewTests(ManagerAPITestCase):
         self.assertEqual(done.data['reviews'][0]['status'], 'reviewed')
         self.assertEqual(done.data['reviews'][0]['comment'], 'Looks correct')
         self.assertNotIn(OTHER_PHONE, str(done.data))
+        asked_log = AuditLog.objects.get(action='note_review_requested', object_id=str(self.note.id))
+        done_log = AuditLog.objects.get(action='note_review_completed', object_id=str(self.note.id))
+        self.assertEqual(asked_log.changes['reviewer_names'], ['Rita'])
+        self.assertEqual(done_log.changes['comment'], 'Looks correct')
+        self.assertNotIn(OTHER_PHONE, str(asked_log.changes))
+        self.assertNotIn(OTHER_PHONE, str(done_log.changes))
 
     def test_open_note_self_tag_and_stranger_are_refused(self):
         open_note = DailyNote.objects.create(

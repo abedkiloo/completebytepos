@@ -10,10 +10,72 @@ from accounts.models import AuditLog
 from utils.audit_helpers import log_domain_event, log_model_change
 
 
+LINE_MAX = 40
+NAME_MAX = 80
+VARIANT_MAX = 40
+
+
 def _money(value) -> str:
     if value is None:
         return ''
     return str(Decimal(str(value)))
+
+
+def _sale_lines(sale) -> tuple[list[dict], int]:
+    """
+    Product names and quantities on one sale, for the audit row.
+
+    Args:
+        sale: Sale instance. Missing ``items`` yields no lines.
+
+    Returns:
+        Tuple of at most 40 line dicts and the full line count (0–10_000).
+        Each line has ``product`` (1–80 characters), ``quantity`` (integer),
+        and ``variant`` (0–40 characters). No price, cost, or phone.
+
+    Raises:
+        None. A broken relation is treated as no lines.
+    """
+    relation = getattr(sale, 'items', None)
+    if relation is None or not hasattr(relation, 'all'):
+        return [], 0
+    try:
+        qs = relation.all()
+        if hasattr(qs, 'select_related'):
+            qs = qs.select_related('product', 'variant')
+        count = qs.count() if hasattr(qs, 'count') else 0
+        rows = []
+        for item in qs[:LINE_MAX]:
+            product = getattr(item, 'product', None)
+            name = str(getattr(product, 'name', None) or 'Item').strip()[:NAME_MAX] or 'Item'
+            variant = getattr(item, 'variant', None)
+            variant_name = ''
+            if variant is not None:
+                variant_name = str(getattr(variant, 'name', None) or variant).strip()[:VARIANT_MAX]
+            try:
+                qty = int(getattr(item, 'quantity', 0) or 0)
+            except (TypeError, ValueError):
+                qty = 0
+            rows.append({'product': name, 'quantity': qty, 'variant': variant_name})
+        if not hasattr(qs, 'count'):
+            count = len(rows)
+        return rows, int(count)
+    except Exception:
+        return [], 0
+
+
+def _line_names(lines: list[dict]) -> str:
+    """
+    Short product list for the audit label.
+
+    Args:
+        lines: Line dicts from ``_sale_lines``. Empty yields ``no items``.
+
+    Returns:
+        Up to 3 product names, joined, at most 120 characters.
+    """
+    names = [str(row.get('product') or '') for row in lines[:3] if row.get('product')]
+    return ', '.join(names)[:120] or 'no items'
 
 
 def log_sale_completed(request, sale, *, source: str = 'checkout'):
@@ -29,9 +91,10 @@ def log_sale_completed(request, sale, *, source: str = 'checkout'):
         None.
 
     Side effects:
-        Appends one ``AuditLog`` row with ``lifecycle=money_posted``.
+        Appends one ``AuditLog`` row with ``lifecycle=money_posted`` and up
+        to 40 product lines (name and quantity). Does not store a phone.
     """
-    items = list(sale.items.all()) if hasattr(sale, 'items') else []
+    lines, item_count = _sale_lines(sale)
     customer = getattr(sale, 'customer', None)
     action = 'checkout' if source == 'checkout' else 'sale_completed'
     method = getattr(sale, 'payment_method', '') or ''
@@ -52,14 +115,15 @@ def log_sale_completed(request, sale, *, source: str = 'checkout'):
             'payment_method': method,
             'reference': getattr(sale, 'payment_reference', '') or '',
             'status': getattr(sale, 'status', ''),
-            'item_count': len(items),
+            'item_count': item_count,
+            'lines': lines,
             'customer_id': getattr(sale, 'customer_id', None),
             'customer_name': getattr(customer, 'name', '') if customer else '',
             'customer_code': getattr(customer, 'customer_code', '') if customer else '',
         },
         object_repr=(
             f"Sale money posted · {getattr(sale, 'sale_number', sale.pk)} · "
-            f"{total or paid} · {method or '—'}"
+            f"{total or paid} · {method or '—'} · {_line_names(lines)}"
         )[:255],
     )
 
@@ -508,3 +572,120 @@ def log_simple_action(
     except Exception:
         # Defensive: log_domain_event already swallows; keep callers safe.
         pass
+
+
+def log_expense_write(request, expense, *, kind: str) -> None:
+    """
+    Record an expense claim or a later decision on it.
+
+    Args:
+        request: Actor request. May be None.
+        expense: Saved expense. Amount is copied as text.
+        kind: ``filed``, ``decided``, ``resubmitted``, ``voided``, or
+            ``redo``. Other text is stored as ``expense_updated``.
+
+    Returns:
+        None.
+
+    Side effects:
+        One AuditLog row on the expenses module. Description is capped at
+        200 characters. No photo and no phone number.
+    """
+    verb = {
+        'filed': 'expense_claim_filed',
+        'decided': 'expense_claim_decided',
+        'resubmitted': 'expense_resubmitted',
+        'voided': 'expense_voided',
+        'redo': 'expense_redo',
+    }.get(kind, 'expense_updated')
+    description = str(getattr(expense, 'description', '') or '')[:200]
+    amount = _money(getattr(expense, 'amount', None))
+    log_simple_action(
+        request,
+        verb,
+        expense,
+        module='expenses',
+        changes={
+            'amount': amount,
+            'description': description,
+            'status': str(getattr(expense, 'status', '') or '')[:20],
+            'is_claim': bool(getattr(expense, 'is_claim', False)),
+            'expense_date': str(getattr(expense, 'expense_date', '') or '')[:10],
+        },
+        object_repr=f"Expense · {description[:80]} · {amount}"[:255],
+    )
+
+
+def log_call_write(request, customer, *, kind: str, detail: dict | None = None) -> None:
+    """
+    Record a call-centre mark, hold, or day-plan change.
+
+    Args:
+        request: Actor request.
+        customer: Customer row, or None for a plan change.
+        kind: ``marked``, ``held``, or ``plan``. Other text uses
+            ``call_updated``.
+        detail: Optional notes. Keys containing ``phone`` are dropped.
+            Text values are capped at 200 characters. At most 8 keys.
+
+    Returns:
+        None.
+
+    Side effects:
+        One AuditLog row on the customers module. The label uses the
+        customer name and code, never the phone.
+    """
+    verb = {'marked': 'call_marked', 'held': 'call_held', 'plan': 'call_plan_saved'}.get(
+        kind, 'call_updated',
+    )
+    safe = {}
+    for key, value in list((detail or {}).items())[:8]:
+        if 'phone' in str(key).lower():
+            continue
+        if isinstance(value, (int, float, bool)) or value is None:
+            text = value
+        else:
+            text = str(value)[:200]
+        safe[str(key)[:40]] = text
+    name = str(getattr(customer, 'name', '') or 'Call plan')[:80]
+    code = str(getattr(customer, 'customer_code', '') or '')[:20]
+    label = f"Call · {name}" + (f" ({code})" if code else '')
+    log_simple_action(
+        request,
+        verb,
+        customer,
+        module='customers',
+        changes=safe,
+        object_repr=label[:255],
+    )
+
+
+def log_note_review_write(request, note, *, kind: str, detail: dict | None = None) -> None:
+    """
+    Record asking for a review or marking a finished note reviewed.
+
+    Args:
+        request: Actor request.
+        note: Daily note the review belongs to.
+        kind: ``completed`` or anything else (treated as requested).
+        detail: Optional ``reviewer_names`` (at most 5, each 80 characters)
+            and ``comment`` (capped at 200 characters).
+
+    Returns:
+        None.
+
+    Side effects:
+        One AuditLog row on daily_notes. No phone number.
+    """
+    verb = 'note_review_completed' if kind == 'completed' else 'note_review_requested'
+    names = [str(name)[:80] for name in list((detail or {}).get('reviewer_names') or [])[:5]]
+    comment = str((detail or {}).get('comment') or '')[:200]
+    title = str(getattr(note, 'title', '') or 'Note')[:80]
+    log_simple_action(
+        request,
+        verb,
+        note,
+        module='daily_notes',
+        changes={'reviewer_names': names, 'comment': comment, 'title': title},
+        object_repr=f"Note review · {title}"[:255],
+    )
