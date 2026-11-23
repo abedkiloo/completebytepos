@@ -35,3 +35,14 @@ def daily_notes_checklists_enabled() -> bool:
 
 def daily_notes_sticky_enabled() -> bool:
     return is_module_feature_enabled('daily_notes', 'sticky_notes')
+
+
+def daily_notes_review_enabled() -> bool:
+    """
+    Catalog feature: tag a colleague to review a finished note.
+
+    Returns:
+        True when ``note_review`` is enabled. A missing row uses the
+        registry default (on). False when the daily notes module is off.
+    """
+    return is_module_feature_enabled('daily_notes', 'note_review')

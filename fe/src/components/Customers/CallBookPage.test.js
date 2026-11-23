@@ -93,6 +93,19 @@ describe('CallBookPage', () => {
     });
   });
 
+  test('searches customers by name the same way as the other lists', async () => {
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    fireEvent.change(screen.getByTestId('call-book-search'), {
+      target: { value: 'Javala' },
+    });
+    await waitFor(() => {
+      expect(customersAPI.callBook).toHaveBeenCalledWith(
+        expect.objectContaining({ search: 'Javala' }),
+      );
+    });
+  });
+
   test('shows the next customer and copies the number instead of dialling', async () => {
     render(<CallBookPage />);
     expect(await screen.findByText('Not Called Shop')).toBeInTheDocument();

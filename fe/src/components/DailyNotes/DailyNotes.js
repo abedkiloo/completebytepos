@@ -71,6 +71,7 @@ const DailyNotes = () => {
   const [selectedDate, setSelectedDate] = useState(() => searchParams.get('date') || todayIso());
   const [personId, setPersonId] = useState(() => searchParams.get('person') || '');
   const [staffOptions, setStaffOptions] = useState([]);
+  const [reviewers, setReviewers] = useState([]);
   const [recentDates, setRecentDates] = useState([]);
   const [notes, setNotes] = useState([]);
   const [tasks, setTasks] = useState([]);
@@ -174,6 +175,25 @@ const DailyNotes = () => {
     };
   }, [viewAll]);
 
+  useEffect(() => {
+    if (!isModuleFeatureEnabled('daily_notes', 'note_review', true)) {
+      setReviewers([]);
+      return undefined;
+    }
+    let cancelled = false;
+    dailyNotesAPI
+      .reviewers()
+      .then((res) => {
+        if (!cancelled) setReviewers(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => {
+        if (!cancelled) setReviewers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const dateOptions = useMemo(() => {
     const set = new Set([selectedDate, todayIso(), ...recentDates]);
     return Array.from(set).sort((a, b) => (a < b ? 1 : -1));
@@ -233,6 +253,26 @@ const DailyNotes = () => {
       toast.error(error.response?.data?.error || 'Could not update checklist item');
     } finally {
       setTogglingChecklistKey(null);
+    }
+  };
+
+  const handleRequestReview = async (note, userIds) => {
+    try {
+      const res = await dailyNotesAPI.requestReview(note.id, { user_ids: userIds });
+      setNotes((prev) => prev.map((n) => (n.id === note.id ? res.data : n)));
+      toast.success('Asked them to review this note');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not ask for a review');
+    }
+  };
+
+  const handleCompleteReview = async (note, reviewId, comment) => {
+    try {
+      const res = await dailyNotesAPI.completeReview(note.id, reviewId, { comment });
+      setNotes((prev) => prev.map((n) => (n.id === note.id ? res.data : n)));
+      toast.success('Review saved');
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Could not save the review');
     }
   };
 
@@ -603,6 +643,9 @@ const DailyNotes = () => {
                 onResubmit={(note, kind) => handleResubmitRejection(note, kind)}
                 onFixSale={handleFixRejectedSale}
                 canModifyEntry={canModifyEntry}
+                reviewers={reviewers}
+                onRequestReview={handleRequestReview}
+                onCompleteReview={handleCompleteReview}
               />
             </section>
           )}

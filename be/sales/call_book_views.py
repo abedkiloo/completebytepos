@@ -87,7 +87,9 @@ class CallBookView(APIView):
         Args:
             request: Query ``scope`` (today|week), ``status``
               (not_called|called|all), ``page`` (1+), ``page_size`` (1–1000),
-            and optional ``weekday`` (0–4).
+            optional ``weekday`` (0–4), and optional ``search`` (name, code,
+            place, or phone, 0–100 characters). A search looks through the
+            whole week. Week totals stay the full book.
 
         Returns:
             Response: Summary counts and one page of rows. Weekend requests
@@ -113,6 +115,7 @@ class CallBookView(APIView):
             page_size=page_size,
             viewer_id=request.user.id,
             weekday=_query_weekday(request.query_params.get('weekday')),
+            search=request.query_params.get('search') or '',
         )
         return Response(payload)
 

@@ -230,6 +230,59 @@ class DailyNoteChecklistItem(models.Model):
         self.completed_at = (at or timezone.now()) if done else None
 
 
+class DailyNoteReview(models.Model):
+    """
+    Ask one staff member to look at a finished note.
+
+    A note may have 0–5 of these. ``comment`` is 0–500 characters.
+    ``status`` is ``pending`` until that person marks it reviewed.
+    """
+
+    STATUS_PENDING = 'pending'
+    STATUS_REVIEWED = 'reviewed'
+    STATUS_CHOICES = [
+        (STATUS_PENDING, 'Waiting for review'),
+        (STATUS_REVIEWED, 'Reviewed'),
+    ]
+
+    daily_note = models.ForeignKey(
+        DailyNote,
+        on_delete=models.CASCADE,
+        related_name='reviews',
+    )
+    reviewer = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='daily_note_reviews',
+    )
+    requested_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='daily_note_review_requests',
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
+    )
+    comment = models.CharField(max_length=500, blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['daily_note', 'reviewer'],
+                name='daily_notes_one_reviewer_per_note',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.daily_note_id} → {self.reviewer_id} ({self.status})'
+
+
 class DailyTask(models.Model):
     """Standalone checklist item for a specific calendar day."""
 

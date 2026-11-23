@@ -208,6 +208,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
     checklist_items = DailyNoteChecklistItemSerializer(many=True, required=False)
     image = serializers.ImageField(required=False, allow_null=True)
     image_url = serializers.SerializerMethodField()
+    reviews = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyNote
@@ -237,6 +238,7 @@ class DailyNoteSerializer(serializers.ModelSerializer):
             'checklist_items',
             'image',
             'image_url',
+            'reviews',
             'created_at',
             'updated_at',
         ]
@@ -255,6 +257,21 @@ class DailyNoteSerializer(serializers.ModelSerializer):
 
     def to_internal_value(self, data):
         return super().to_internal_value(_parse_multipart_payload(data))
+
+    def get_reviews(self, obj):
+        """
+        People asked to review this note, oldest first.
+
+        Args:
+            obj: DailyNote. Uses prefetched ``reviews`` when present.
+
+        Returns:
+            List of 0–5 dicts. Names only; no phone numbers.
+        """
+        from daily_notes.note_reviews import review_payload
+
+        rows = obj.reviews.all() if hasattr(obj, 'reviews') else []
+        return [review_payload(row) for row in list(rows)[:5]]
 
     def get_image_url(self, obj):
         """

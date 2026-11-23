@@ -169,6 +169,12 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 4,
             ),
             _f('sticky_notes', 'Must-tick notes', 'Blocking sticky notes for assignees.', 5),
+            _f(
+                'note_review',
+                'Ask someone to review',
+                'On a finished note, tag a colleague to look at it and leave feedback.',
+                6,
+            ),
         ],
     },
     {

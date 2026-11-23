@@ -321,6 +321,10 @@ export const dailyNotesAPI = {
     api.post(`/daily-notes/notes/${noteId}/checklist-items/${itemId}/toggle-done/`),
   staff: () => api.get('/daily-notes/notes/staff/'),
   roles: () => api.get('/daily-notes/notes/roles/'),
+  reviewers: () => api.get('/daily-notes/notes/reviewers/'),
+  requestReview: (id, data) => api.post(`/daily-notes/notes/${id}/request-review/`, data),
+  completeReview: (noteId, reviewId, data) =>
+    api.post(`/daily-notes/notes/${noteId}/reviews/${reviewId}/complete/`, data),
 };
 
 export const cmsAPI = {

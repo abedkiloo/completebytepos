@@ -38,6 +38,9 @@ export default function DailyNotesBoard({
   onResubmit,
   onFixSale,
   canModifyEntry,
+  reviewers = [],
+  onRequestReview,
+  onCompleteReview,
 }) {
   const [expandedIds, setExpandedIds] = useState([]);
 
@@ -138,6 +141,25 @@ export default function DailyNotesBoard({
                                 data-testid={`note-carried-over-${note.id}`}
                               >
                                 {carried}
+                              </Badge>
+                            ) : null}
+                            {Array.isArray(note.reviews) &&
+                            note.reviews.some((row) => row.status === 'pending') ? (
+                              <Badge
+                                variant="outline"
+                                data-testid={`note-review-waiting-${note.id}`}
+                              >
+                                Needs review
+                              </Badge>
+                            ) : null}
+                            {Array.isArray(note.reviews) &&
+                            note.reviews.length > 0 &&
+                            note.reviews.every((row) => row.status === 'reviewed') ? (
+                              <Badge
+                                variant="outline"
+                                data-testid={`note-review-done-${note.id}`}
+                              >
+                                Reviewed
                               </Badge>
                             ) : null}
                             {Array.isArray(note.checklist_items) &&
@@ -274,6 +296,23 @@ export default function DailyNotesBoard({
                             ) : null}
                           </div>
 
+                          {isModuleFeatureEnabled('daily_notes', 'note_review', true) &&
+                          note.is_done ? (
+                            <NoteReviewBox
+                              note={note}
+                              currentUserId={currentUserId}
+                              reviewers={reviewers}
+                              canAsk={
+                                note.author === currentUserId ||
+                                note.author_id === currentUserId ||
+                                note.assigned_to === currentUserId ||
+                                viewAll
+                              }
+                              onRequestReview={onRequestReview}
+                              onCompleteReview={onCompleteReview}
+                            />
+                          ) : null}
+
                           <div className="flex flex-wrap gap-1">
                             {NOTE_BOARD_COLUMNS.filter((item) => item.id !== column.id).map(
                               (item) => (
@@ -327,6 +366,95 @@ export default function DailyNotesBoard({
           </section>
         );
       })}
+    </div>
+  );
+}
+
+function NoteReviewBox({
+  note,
+  currentUserId,
+  reviewers,
+  canAsk,
+  onRequestReview,
+  onCompleteReview,
+}) {
+  const [reviewerId, setReviewerId] = React.useState('');
+  const [comment, setComment] = React.useState('');
+  const reviews = Array.isArray(note.reviews) ? note.reviews : [];
+  const mine = reviews.find(
+    (row) => String(row.reviewer_id) === String(currentUserId) && row.status === 'pending'
+  );
+
+  const ask = () => {
+    if (!reviewerId || !onRequestReview) return;
+    onRequestReview(note, [Number(reviewerId)]);
+  };
+
+  const finish = () => {
+    if (!mine || !onCompleteReview) return;
+    onCompleteReview(note, mine.id, comment);
+  };
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/20 px-2.5 py-2" data-testid={`note-review-${note.id}`}>
+      {reviews.length > 0 ? (
+        <ul className="space-y-1 text-sm">
+          {reviews.map((row) => (
+            <li key={row.id}>
+              <span className="font-medium">{row.reviewer_name}</span>
+              {row.status === 'pending' ? ' — waiting for their review' : ' — reviewed'}
+              {row.comment ? <span className="block text-muted-foreground">{row.comment}</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Tag someone to look at this finished note and leave feedback.
+        </p>
+      )}
+      {mine ? (
+        <div className="space-y-2">
+          <label className="block text-xs font-medium" htmlFor={`review-comment-${note.id}`}>
+            Your feedback
+          </label>
+          <textarea
+            id={`review-comment-${note.id}`}
+            className="w-full rounded-md border bg-background px-2 py-1 text-sm"
+            maxLength={500}
+            rows={2}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            data-testid={`note-review-comment-${note.id}`}
+          />
+          <Button type="button" size="sm" onClick={finish} data-testid={`note-review-finish-${note.id}`}>
+            Mark reviewed
+          </Button>
+        </div>
+      ) : null}
+      {canAsk ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="sr-only" htmlFor={`review-person-${note.id}`}>
+            Person to review
+          </label>
+          <select
+            id={`review-person-${note.id}`}
+            className="h-8 max-w-[14rem] rounded-md border bg-background px-2 text-sm"
+            value={reviewerId}
+            onChange={(e) => setReviewerId(e.target.value)}
+            data-testid={`note-review-person-${note.id}`}
+          >
+            <option value="">Choose a person</option>
+            {reviewers.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.display_name || person.username}
+              </option>
+            ))}
+          </select>
+          <Button type="button" size="sm" variant="outline" disabled={!reviewerId} onClick={ask} data-testid={`note-review-ask-${note.id}`}>
+            Ask them to review
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

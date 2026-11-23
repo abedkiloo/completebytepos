@@ -189,10 +189,17 @@ def _scoped_queryset(model, *, user, view_all: bool):
     if 'assigned_to' in related:
         qs = qs.select_related('assigned_to', 'assigned_to__profile')
     if model is DailyNote:
-        qs = qs.select_related('assigned_role').prefetch_related('checklist_items')
+        qs = qs.select_related('assigned_role').prefetch_related(
+            'checklist_items',
+            'reviews',
+            'reviews__reviewer',
+            'reviews__requested_by',
+        )
     if not view_all:
         if model is DailyNote:
-            qs = qs.filter(Q(author=user) | Q(assigned_to=user))
+            qs = qs.filter(
+                Q(author=user) | Q(assigned_to=user) | Q(reviews__reviewer=user)
+            ).distinct()
         else:
             qs = qs.filter(author=user)
     return qs
@@ -247,7 +254,11 @@ def _apply_common_filters(qs, *, date_field: str, filters: dict | None, view_all
     person_id = filters.get('person')
     if person_id and view_all:
         if getattr(qs.model, '__name__', '') == 'DailyNote':
-            qs = qs.filter(Q(assigned_to_id=person_id) | Q(author_id=person_id))
+            qs = qs.filter(
+                Q(assigned_to_id=person_id)
+                | Q(author_id=person_id)
+                | Q(reviews__reviewer_id=person_id)
+            ).distinct()
         else:
             qs = qs.filter(assigned_to_id=person_id)
 
@@ -299,6 +310,31 @@ class DailyNoteService:
 
         qs = _scoped_queryset(DailyNote, user=user, view_all=view_all)
         qs = _apply_common_filters(qs, date_field='note_date', filters=filters, view_all=view_all)
+        filters = filters or {}
+        if filters.get('status') != 'done':
+            from daily_notes.models import DailyNoteReview
+
+            extra_ids = list(
+                DailyNoteReview.objects.filter(
+                    Q(reviewer=user, status=DailyNoteReview.STATUS_PENDING)
+                    | Q(requested_by=user, status=DailyNoteReview.STATUS_PENDING)
+                ).values_list('daily_note_id', flat=True)[:100]
+            )
+            if extra_ids:
+                qs = DailyNote.objects.filter(
+                    Q(pk__in=qs.values('pk')) | Q(pk__in=extra_ids)
+                ).select_related(
+                    'author',
+                    'author__profile',
+                    'assigned_to',
+                    'assigned_to__profile',
+                    'assigned_role',
+                ).prefetch_related(
+                    'checklist_items',
+                    'reviews',
+                    'reviews__reviewer',
+                    'reviews__requested_by',
+                )
         priority_filter = (filters or {}).get('priority')
         if priority_filter in ('high', 'medium', 'low'):
             qs = qs.filter(priority=priority_filter)
@@ -449,7 +485,9 @@ def recent_activity_dates(*, user, view_all: bool, limit: int = 30):
     note_qs = DailyNote.objects.all()
     task_qs = DailyTask.objects.all()
     if not view_all:
-        note_qs = note_qs.filter(Q(author=user) | Q(assigned_to=user))
+        note_qs = note_qs.filter(
+            Q(author=user) | Q(assigned_to=user) | Q(reviews__reviewer=user)
+        ).distinct()
         task_qs = task_qs.filter(assigned_to=user)
 
     dates = set(note_qs.values_list('note_date', flat=True).distinct())

@@ -748,3 +748,47 @@ class CallBookCoverageTests(SuperAdminAPITestCase):
             'bad_plan',
         )
         self.assertIn('rows', plan_payload())
+
+
+class CallBookSearchTests(SuperAdminAPITestCase):
+    """Find one customer in the call centre the same way the customer list does."""
+
+    def setUp(self):
+        super().setUp()
+        _enable_call_book(True)
+        self.javala = _customer('Javala Alence', '0718555001')
+        self.other = _customer('Belt Shop', '0728666002')
+        self.javala.customer_code = 'JA-14'
+        self.javala.save(update_fields=['customer_code'])
+
+    def test_name_code_and_phone_find_one_customer(self):
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            by_name = build_call_book(
+                today=MONDAY, scope='week', status='not_called', weekday=4, search='javala',
+            )
+            by_code = build_call_book(today=MONDAY, scope='week', search='JA-14')
+            by_phone = build_call_book(today=MONDAY, scope='week', search='254718555001')
+        self.assertEqual([row['customer_id'] for row in by_name['results']], [self.javala.id])
+        self.assertEqual(by_name['summary']['callable'] >= 2, True)
+        self.assertEqual([row['name'] for row in by_code['results']], ['Javala Alence'])
+        self.assertEqual([row['customer_id'] for row in by_phone['results']], [self.javala.id])
+        self.assertNotIn(self.other.phone, str(by_name['results']))
+        self.assertNotIn('_match', by_name['results'][0])
+
+    def test_blank_search_keeps_the_day_list(self):
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            book = build_call_book(today=MONDAY, scope='week', status='all', search='   ')
+        ids = {row['customer_id'] for row in book['results']}
+        self.assertIn(self.javala.id, ids)
+        self.assertIn(self.other.id, ids)
+
+    def test_api_search_and_anonymous_refusal(self):
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            found = self.client.get('/api/sales/call-book/', {'search': 'Alence', 'scope': 'week'})
+        self.assertEqual(found.status_code, 200, found.data)
+        self.assertEqual(found.data['results'][0]['name'], 'Javala Alence')
+        self.assertNotIn(self.other.phone, str(found.data['results']))
+        anon = APIClient()
+        denied = anon.get('/api/sales/call-book/', {'search': 'Javala'})
+        self.assertEqual(denied.status_code, 401)
+        self.assertNotIn(self.javala.phone, str(denied.data))

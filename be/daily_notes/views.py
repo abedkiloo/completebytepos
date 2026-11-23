@@ -38,6 +38,9 @@ DAILY_NOTES_PERMS = RequireAny(
             'blocking': 'view',
             'staff': 'view',
             'roles': 'view',
+            'reviewers': 'view',
+            'request_review': 'create',
+            'complete_review': 'view',
         },
     ),
     AllowDailyNotesDeskAccess,
@@ -60,6 +63,7 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
             'blocking',
             'toggle_done',
             'toggle_checklist_item',
+            'complete_review',
         ):
             return [IsAuthenticated(), RequireModuleEnabled('daily_notes')()]
         return super().get_permissions()
@@ -215,6 +219,124 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
 
         qs = Role.objects.filter(is_active=True).order_by('name')
         return Response([{'id': r.id, 'name': r.name} for r in qs])
+
+    def _review_feature_off(self):
+        return Response(
+            {'error': 'Asking someone to review a note is turned off.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    @action(detail=False, methods=['get'], url_path='reviewers')
+    def reviewers(self, request):
+        """Active staff who can be asked to review a note. Names only."""
+        if not user_may_access_daily_notes(request.user):
+            return self._access_denied()
+        from daily_notes.module_settings import daily_notes_review_enabled
+
+        if not daily_notes_review_enabled():
+            return self._review_feature_off()
+        from django.contrib.auth.models import User
+        from django.db.models import Q
+        from daily_notes.serializers import _author_display
+
+        qs = (
+            User.objects.filter(is_active=True, profile__isnull=False)
+            .exclude(pk=request.user.pk)
+            .select_related('profile')
+            .order_by('first_name', 'last_name', 'username')
+        )
+        q = (request.query_params.get('q') or '').strip()[:80]
+        if q:
+            qs = qs.filter(
+                Q(username__icontains=q)
+                | Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+            )
+        return Response([
+            {'id': u.id, 'display_name': _author_display(u)}
+            for u in qs[:200]
+        ])
+
+    @action(detail=True, methods=['post'], url_path='request-review')
+    def request_review(self, request, pk=None):
+        """
+        Tag 1–5 colleagues to review a finished note.
+
+        Body ``user_ids`` is required. The note must already be done.
+        """
+        from django.core.exceptions import ValidationError
+
+        from daily_notes.module_settings import daily_notes_review_enabled
+        from daily_notes.note_reviews import request_note_reviews
+        from utils.validation_errors import validation_error_message
+
+        if not daily_notes_review_enabled():
+            return self._review_feature_off()
+        note = self.get_object()
+        user = request.user
+        if not (
+            user.is_superuser
+            or note.author_id == user.id
+            or note.assigned_to_id == user.id
+            or user_may_view_all_daily_notes(user)
+        ):
+            return Response(
+                {'error': 'You can ask for a review on notes you wrote or were given.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            request_note_reviews(
+                note=note,
+                reviewer_ids=request.data.get('user_ids') or [],
+                requested_by=user,
+            )
+        except ValidationError as exc:
+            return Response(
+                {'error': validation_error_message(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        note = self.get_queryset().get(pk=note.pk)
+        return Response(self.get_serializer(note).data)
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path=r'reviews/(?P<review_id>[0-9]+)/complete',
+    )
+    def complete_review(self, request, pk=None, review_id=None):
+        """
+        The tagged person marks the note reviewed.
+
+        Body ``comment`` is optional, 0–500 characters.
+        """
+        from django.core.exceptions import ValidationError
+
+        from daily_notes.models import DailyNoteReview
+        from daily_notes.module_settings import daily_notes_review_enabled
+        from daily_notes.note_reviews import complete_note_review
+        from utils.validation_errors import validation_error_message
+
+        if not daily_notes_review_enabled():
+            return self._review_feature_off()
+        note = self.get_object()
+        try:
+            review = note.reviews.select_related('reviewer', 'requested_by').get(pk=review_id)
+        except DailyNoteReview.DoesNotExist:
+            return Response({'error': 'Review not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if review.reviewer_id != request.user.id and not request.user.is_superuser:
+            return Response(
+                {'error': 'Only the person who was asked can mark this reviewed.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            complete_note_review(review=review, comment=request.data.get('comment') or '')
+        except ValidationError as exc:
+            return Response(
+                {'error': validation_error_message(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        note = self.get_queryset().get(pk=note.pk)
+        return Response(self.get_serializer(note).data)
 
 
 class DailyTaskViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):

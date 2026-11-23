@@ -292,7 +292,64 @@ def _weekday_filter(weekday) -> int | None:
     return day
 
 
-def build_call_book(*, today: date | None = None, scope: str = 'today', status: str = 'all', page: int = 1, page_size: int = PAGE_SIZE_DEFAULT, viewer_id: int | None = None, weekday: int | None = None) -> dict:
+def _customer_search_text(customer) -> str:
+    """
+    Text a call-centre search can match, lowercased.
+
+    Args:
+        customer: Customer row. Name, owner, contact, code, email, phone,
+            and place fields are included. Each field is 0–200 characters.
+
+    Returns:
+        str: One line, at most 2000 characters. Blank fields are skipped.
+    """
+    parts = [
+        getattr(customer, 'name', '') or '',
+        getattr(customer, 'owner_name', '') or '',
+        getattr(customer, 'contact_person', '') or '',
+        getattr(customer, 'customer_code', '') or '',
+        getattr(customer, 'email', '') or '',
+        getattr(customer, 'phone', '') or '',
+        getattr(customer, 'tax_id', '') or '',
+        getattr(customer, 'county', '') or '',
+        getattr(customer, 'sub_county', '') or '',
+        getattr(customer, 'ward', '') or '',
+        getattr(customer, 'city', '') or '',
+        getattr(customer, 'address', '') or '',
+    ]
+    return ' '.join(part.strip() for part in parts if part and str(part).strip())[:2000].lower()
+
+
+def _customer_matches_search(customer, search: str) -> bool:
+    """
+    True when this customer matches the same text used on the customer list.
+
+    Args:
+        customer: Customer row with name and phone.
+        search: Typed text, trimmed to 100 characters. Blank matches everyone.
+
+    Returns:
+        bool: Name, code, place, or phone. A phone of at least 3 digits
+        also matches the 07 and 254 forms.
+
+    Raises:
+        None.
+    """
+    from sales.customer_search import _digits_only, _phone_search_variants
+
+    term = (search or '').strip()[:100]
+    if not term:
+        return True
+    if term.lower() in _customer_search_text(customer):
+        return True
+    digits = _digits_only(term)
+    if len(digits) < 3:
+        return False
+    phone_digits = _digits_only(getattr(customer, 'phone', '') or '')
+    return any(variant in phone_digits for variant in _phone_search_variants(digits))
+
+
+def build_call_book(*, today: date | None = None, scope: str = 'today', status: str = 'all', page: int = 1, page_size: int = PAGE_SIZE_DEFAULT, viewer_id: int | None = None, weekday: int | None = None, search: str | None = None) -> dict:
     """
     Build the shared book for one week.
 
@@ -307,6 +364,10 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         weekday: Optional 0–4 (Monday–Friday). Limits the page to that day.
             A customer whose call-later time has been reached stays on the
             page even when their own day is different. Outside 0–4 is ignored.
+        search: Optional customer text, 0–100 characters. Blank keeps the
+            day and status filters. A name, code, place, or phone searches
+            the whole week, including customers already called. Phone digits
+            match 07 and 254. Week totals in ``summary`` stay the full book.
 
     Returns:
         dict: ``summary`` counts plus ``results`` for this page. Customers
@@ -335,8 +396,9 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
     plans = list(CallDayPlan.objects.all())
     customers = list(
         Customer.objects.filter(is_active=True).only(
-            'id', 'name', 'phone', 'county', 'sub_county', 'ward',
-            'latitude', 'longitude', 'buyer_segment',
+            'id', 'name', 'phone', 'owner_name', 'contact_person',
+            'customer_code', 'email', 'tax_id', 'county', 'sub_county',
+            'ward', 'city', 'address', 'latitude', 'longitude', 'buyer_segment',
         )
     )
     assignments = assign_sub_county_weekdays(sub_county_call_groups(customers))
@@ -387,6 +449,7 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             now,
         )
         rows.append({
+            '_match': _customer_matches_search(customer, search),
             'customer_id': customer.id,
             'name': customer.name,
             'phone': customer.phone,
@@ -427,15 +490,23 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         scoped = [row for row in scoped if not row['called_this_week'] or row['call_later_due']]
     elif status == 'called':
         scoped = [row for row in scoped if row['called_this_week']]
-    day_filter = _weekday_filter(weekday)
-    if day_filter is not None:
-        scoped = [
-            row for row in scoped
-            if row['weekday'] == day_filter or row['call_later_due']
-        ]
+    term = (search or '').strip()[:100]
+    if term:
+        scoped = [row for row in rows if row.get('_match')]
+    else:
+        day_filter = _weekday_filter(weekday)
+        if day_filter is not None:
+            scoped = [
+                row for row in scoped
+                if row['weekday'] == day_filter or row['call_later_due']
+            ]
     total = len(scoped)
     start = (page - 1) * page_size
-    page_rows = scoped[start:start + page_size]
+    page_rows = []
+    for row in scoped[start:start + page_size]:
+        cleaned = dict(row)
+        cleaned.pop('_match', None)
+        page_rows.append(cleaned)
     return {
         'summary': {
             'week_start': monday.isoformat(),

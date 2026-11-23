@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Clock, Copy, PhoneOff, X } from 'lucide-react';
+import { Check, Clock, Copy, PhoneOff, Search, X } from 'lucide-react';
 
 import { customersAPI } from '../../services/api';
+import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
 import { toast } from '../../utils/toast';
 import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
@@ -42,6 +43,8 @@ export default function CallBookPage() {
   const [plan, setPlan] = useState(null);
   const [index, setIndex] = useState(0);
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 350);
   const bootDay = useRef(true);
   const canEditPlan = isManagerOrAdminFromStorage();
 
@@ -54,6 +57,7 @@ export default function CallBookPage() {
         page,
         page_size: DEFAULT_PAGE_SIZE,
         weekday: day,
+        search: debouncedSearch.trim() || undefined,
       });
       setBook(data);
       if (bootDay.current) {
@@ -69,7 +73,7 @@ export default function CallBookPage() {
     } finally {
       setLoading(false);
     }
-  }, [day, page]);
+  }, [day, page, debouncedSearch]);
 
   useEffect(() => {
     load();
@@ -91,11 +95,12 @@ export default function CallBookPage() {
   const summary = book?.summary;
   const markingOpen = Boolean(summary?.is_call_day);
   const results = book?.results || [];
+  const searching = Boolean(debouncedSearch.trim());
   const remaining = useMemo(
     () => results.filter((row) => row.call_later_due || !row.called_this_week),
     [results],
   );
-  const queue = remaining;
+  const queue = searching ? results : remaining;
   const listed = Number.isFinite(Number(book?.count)) ? Number(book.count) : queue.length;
   const pageCount = Math.max(1, Math.ceil(listed / DEFAULT_PAGE_SIZE));
   const current = queue[Math.min(index, Math.max(queue.length - 1, 0))] || null;
@@ -111,6 +116,22 @@ export default function CallBookPage() {
         <FilterButton active={view === 'overview'} onClick={() => setView('overview')} label="Overview" />
         <FilterButton active={view === 'week'} onClick={() => setView('week')} label="Weekly schedule" />
         <FilterButton active={view === 'queue'} onClick={() => setView('queue')} label="Call queue" />
+      </div>
+      <div className="relative max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+            setIndex(0);
+          }}
+          placeholder="Name, phone, or code…"
+          className="h-10 pl-9"
+          aria-label="Search customers"
+          data-testid="call-book-search"
+        />
       </div>
       {loading && <p className="text-sm text-muted-foreground">Opening the book…</p>}
       {!loading && view === 'overview' && summary && (
@@ -363,7 +384,7 @@ function Workspace({ summary, current, position, total, markingOpen, dayLabel, d
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Customer call workspace</p>
           <p className="text-sm font-medium">{dayLabel}{dayPlaces ? ` · ${dayPlaces}` : ''}</p>
           <p className="text-xs text-muted-foreground">
-            {total ? `Current customer · ${position} of ${total}` : 'No customers left on this day'}
+            {total ? `Current customer · ${position} of ${total}` : 'No customer matches'}
           </p>
         </div>
         <Badge variant={current?.called_this_week ? 'success' : 'warning'}>
