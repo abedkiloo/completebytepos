@@ -516,6 +516,13 @@ export const customersAPI = {
   /** Admin-only: correct cash collected on a posted debt settlement. */
   correctWalletSettlementAmount: (txnId, data) =>
     api.patch(`/sales/customers/wallet-settlements/${txnId}/amount/`, data),
+  /**
+   * Move a posted debt repayment onto another customer.
+   * @param {number} txnId Settlement id, 1–2^31-1.
+   * @param {{ customer_id: number, move_sales?: boolean, reason?: string }} data
+   */
+  transferWalletSettlementCustomer: (txnId, data) =>
+    api.post(`/sales/customers/wallet-settlements/${txnId}/transfer-customer/`, data),
   debtSummary: () => api.get('/sales/customers/debt-summary/', { timeout: 30000 }),
   debtors: (params) => api.get('/sales/customers/debtors/', { params, timeout: 30000 }),
   debtorCount: () => api.get('/sales/customers/debtor-count/'),

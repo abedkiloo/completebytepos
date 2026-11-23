@@ -46,6 +46,8 @@ function DetailRow({ label, children }) {
  * @param {(open: boolean) => void} props.onOpenChange
  * @param {boolean} [props.canCorrect=false]
  * @param {() => void} [props.onCorrect]
+ * @param {boolean} [props.canTransfer=false]
+ * @param {() => void} [props.onTransfer]
  * @param {boolean} [props.loading=false]
  */
 export default function PaymentDetailDialog({
@@ -54,6 +56,8 @@ export default function PaymentDetailDialog({
   onOpenChange,
   canCorrect = false,
   onCorrect,
+  canTransfer = false,
+  onTransfer,
   loading = false,
 }) {
   if (!payment && !loading) return null;
@@ -219,6 +223,16 @@ export default function PaymentDetailDialog({
                 data-testid="payment-detail-correct"
               >
                 Correct amount
+              </Button>
+            ) : null}
+            {canTransfer && onTransfer && kind === 'debt_settlement' ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onTransfer}
+                data-testid="payment-detail-transfer"
+              >
+                Move to correct customer
               </Button>
             ) : null}
           </div>

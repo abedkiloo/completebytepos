@@ -358,6 +358,23 @@ class CustomerWalletTransactionSerializer(serializers.ModelSerializer):
         return is_backdated_wallet_txn(obj)
 
 
+class TransferDebtSettlementCustomerSerializer(serializers.Serializer):
+    """Move a posted debt repayment onto another customer.
+
+    ``customer_id`` is the customer who should have the money, 1–2^31-1.
+    ``move_sales`` also moves the sales this repayment already paid.
+    ``reason`` is optional, 0–200 characters.
+    """
+
+    customer_id = serializers.IntegerField(min_value=1, max_value=2_147_483_647)
+    move_sales = serializers.BooleanField(required=False, default=False)
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=200,
+    )
+
+
 class CorrectDebtSettlementAmountSerializer(serializers.Serializer):
     """Admin correction of cash collected on a posted debt settlement."""
 

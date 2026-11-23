@@ -63,6 +63,7 @@ describe('PaymentDetailDialog security', () => {
       <PaymentDetailDialog payment={settlement} open onOpenChange={jest.fn()} />
     );
     expect(screen.queryByTestId('payment-detail-correct')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('payment-detail-transfer')).not.toBeInTheDocument();
   });
 
   it('does not invent a correct button for invoice / sale tenders', () => {
@@ -105,6 +106,7 @@ describe('PaymentDetailDialog security', () => {
         />
       );
       expect(screen.queryByTestId('payment-detail-correct')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('payment-detail-transfer')).not.toBeInTheDocument();
       unmount();
     }
   });

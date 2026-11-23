@@ -195,6 +195,13 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 'Called this week resets each Monday.',
                 6,
             ),
+            _f(
+                'transfer_customer_on_collection',
+                'Move a repayment to the right customer',
+                'An admin can move a posted debt repayment, and the sales it paid, '
+                'onto the customer who actually paid.',
+                7,
+            ),
         ],
     },
     {
@@ -531,6 +538,7 @@ PRESETS: dict[str, dict[str, Any]] = {
                 'customer_management',
                 'customer_history',
                 'collection_payer_details',
+                'transfer_customer_on_collection',
             ],
             'invoicing': ['invoice_creation', 'invoice_tracking', 'payment_tracking'],
             'inventory': ['stock_adjustments', 'low_stock_alerts', 'inventory_reports'],

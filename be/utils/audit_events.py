@@ -180,6 +180,60 @@ def log_debt_settlement_corrected(
     )
 
 
+def log_debt_settlement_transferred(
+    request,
+    *,
+    txn,
+    from_customer,
+    to_customer,
+    moved_sale_ids,
+    reason: str = '',
+):
+    """
+    Audit moving a posted debt repayment onto another customer.
+
+    Args:
+        request: Actor request-like object.
+        txn: ``CustomerWalletTransaction`` after the move.
+        from_customer: Customer who had the repayment. Name only, no phone.
+        to_customer: Customer who now has the repayment.
+        moved_sale_ids: Sale ids that also changed customer, 0–50.
+        reason: Optional note, truncated to 200 characters.
+
+    Returns:
+        None.
+
+    Side effects:
+        Appends one ``AuditLog`` with action ``debt_settlement_transferred``.
+    """
+    changes = {
+        'lifecycle': 'customer_transferred',
+        'transaction_id': getattr(txn, 'id', None),
+        'amount': _money(getattr(txn, 'amount', None)),
+        'from_customer_id': getattr(from_customer, 'id', None),
+        'from_customer_name': (getattr(from_customer, 'name', '') or '')[:120],
+        'to_customer_id': getattr(to_customer, 'id', None),
+        'to_customer_name': (getattr(to_customer, 'name', '') or '')[:120],
+        'moved_sale_ids': [int(sid) for sid in (moved_sale_ids or [])][:50],
+        'from_wallet_balance': _money(getattr(from_customer, 'wallet_balance', None)),
+        'to_wallet_balance': _money(getattr(to_customer, 'wallet_balance', None)),
+        'reason': (reason or '')[:200],
+    }
+    label = (
+        f"Repayment moved · {changes['from_customer_name'] or 'Customer'} → "
+        f"{changes['to_customer_name'] or 'Customer'}"
+    )
+    instance = txn if isinstance(txn, Model) else None
+    log_domain_event(
+        request,
+        'debt_settlement_transferred',
+        instance,
+        module='sales',
+        changes=changes,
+        object_repr=label[:255],
+    )
+
+
 def log_holding_saved(request, holding, *, created: bool):
     log_domain_event(
         request,

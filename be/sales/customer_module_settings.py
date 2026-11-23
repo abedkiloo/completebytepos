@@ -65,6 +65,18 @@ def customers_location_filters_enabled() -> bool:
     return is_module_feature_enabled(MODULE, 'location_filters')
 
 
+def customers_transfer_customer_on_collection_enabled() -> bool:
+    """
+    Catalog feature: move a posted repayment onto the customer who paid.
+
+    Returns:
+        True when ``transfer_customer_on_collection`` is enabled. Missing
+        feature row uses the registry default (on). False when the customers
+        module itself is off.
+    """
+    return is_module_feature_enabled(MODULE, 'transfer_customer_on_collection')
+
+
 def customers_collection_payer_details_enabled() -> bool:
     """
     Catalog feature: require payer name/phone and till/bank on collections.

@@ -24,6 +24,7 @@ import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { userHasAdminSaleOverride } from '../../utils/saleCompletionApproval';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 import {
   customersShowWalletBalance,
   customersEnableWalletPayment,
@@ -42,6 +43,7 @@ import {
 import { customerDetailPath } from '../../utils/customerDetail';
 import ReceiveWalletPaymentDialog from './ReceiveWalletPaymentDialog';
 import CorrectCollectionAmountDialog from './CorrectCollectionAmountDialog';
+import TransferCollectionCustomerDialog from './TransferCollectionCustomerDialog';
 import DebtReminderDialog from './DebtReminderDialog';
 import PaymentDetailDialog from './PaymentDetailDialog';
 import { Button } from '../ui/button';
@@ -96,9 +98,13 @@ export default function DebtManagementPage() {
   const canCorrectCollection =
     userHasAdminSaleOverride() ||
     hasPermission(permissions, 'debt_management', 'correct');
+  const canTransferCollection =
+    canCorrectCollection &&
+    isModuleFeatureEnabled('customers', 'transfer_customer_on_collection', true);
 
   const [summary, setSummary] = useState(emptyDebtSummary());
   const [correctingCollection, setCorrectingCollection] = useState(null);
+  const [transferringCollection, setTransferringCollection] = useState(null);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [paymentDetailOpen, setPaymentDetailOpen] = useState(false);
   const [paymentDetailLoading, setPaymentDetailLoading] = useState(false);
@@ -684,6 +690,17 @@ export default function DebtManagementPage() {
           refreshAll();
         }}
       />
+      <TransferCollectionCustomerDialog
+        open={Boolean(transferringCollection)}
+        collection={transferringCollection}
+        onOpenChange={(open) => {
+          if (!open) setTransferringCollection(null);
+        }}
+        onSaved={() => {
+          setTransferringCollection(null);
+          refreshAll();
+        }}
+      />
       <PaymentDetailDialog
         payment={selectedPayment}
         open={paymentDetailOpen}
@@ -691,6 +708,11 @@ export default function DebtManagementPage() {
         canCorrect={canCorrectCollection}
         onCorrect={() => {
           if (selectedPayment) setCorrectingCollection(selectedPayment);
+          setPaymentDetailOpen(false);
+        }}
+        canTransfer={canTransferCollection}
+        onTransfer={() => {
+          if (selectedPayment) setTransferringCollection(selectedPayment);
           setPaymentDetailOpen(false);
         }}
         onOpenChange={(open) => {

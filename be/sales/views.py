@@ -19,6 +19,7 @@ from .serializers import (
     CustomerSerializer, CustomerListSerializer,
     CustomerWalletTransactionSerializer,
     CorrectDebtSettlementAmountSerializer,
+    TransferDebtSettlementCustomerSerializer,
     ReceiveWalletPaymentSerializer,
 )
 from .refunds import SaleRefundService
@@ -2118,6 +2119,90 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'wallet_balance': str(customer.wallet_balance),
                 'old_amount': str(old_amount),
                 'new_amount': str(data['amount']),
+            }
+        )
+
+    @transaction.atomic
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path=r'wallet-settlements/(?P<txn_id>[0-9]+)/transfer-customer',
+        permission_classes=[
+            IsAuthenticated,
+            RequirePerm('debt_management', 'correct'),
+        ],
+    )
+    def transfer_wallet_settlement_customer(self, request, txn_id=None):
+        """
+        Move a posted debt repayment onto the customer who actually paid.
+
+        Body:
+            customer_id (required) — active customer id, 1–2^31-1.
+            move_sales (optional) — also move the sales this repayment paid.
+            reason (optional) — note, 0–200 characters.
+
+        The response has wallet balances and sale ids. It does not include
+        phone numbers.
+        """
+        from sales.customer_module_settings import (
+            customers_show_wallet_balance,
+            customers_transfer_customer_on_collection_enabled,
+        )
+        from sales.debt_settlement_correction import transfer_debt_settlement_customer
+
+        if not customers_show_wallet_balance():
+            return self._feature_disabled_response('Wallet balance')
+        if not customers_transfer_customer_on_collection_enabled():
+            return self._feature_disabled_response('Moving a repayment to another customer')
+
+        serializer = TransferDebtSettlementCustomerSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            result = transfer_debt_settlement_customer(
+                txn_id=int(txn_id),
+                target_customer_id=data['customer_id'],
+                user=request.user,
+                reason=data.get('reason', ''),
+                move_sales=bool(data.get('move_sales')),
+            )
+        except CustomerWalletTransaction.DoesNotExist:
+            return Response(
+                {'error': 'Settlement not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except ValidationError as exc:
+            return Response(
+                {'error': validation_error_message(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        txn = result['transaction']
+        source = result['from_customer']
+        target = result['to_customer']
+        try:
+            from utils.audit_events import log_debt_settlement_transferred
+
+            log_debt_settlement_transferred(
+                request,
+                txn=txn,
+                from_customer=source,
+                to_customer=target,
+                moved_sale_ids=result['moved_sale_ids'],
+                reason=data.get('reason', ''),
+            )
+        except Exception:
+            pass
+        return Response(
+            {
+                'transaction': CustomerWalletTransactionSerializer(txn).data,
+                'from_customer_id': source.id,
+                'to_customer_id': target.id,
+                'from_customer_name': source.name,
+                'to_customer_name': target.name,
+                'from_wallet_balance': str(source.wallet_balance),
+                'to_wallet_balance': str(target.wallet_balance),
+                'moved_sale_ids': result['moved_sale_ids'],
             }
         )
 
