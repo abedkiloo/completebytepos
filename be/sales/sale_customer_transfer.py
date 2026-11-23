@@ -1,9 +1,9 @@
 """
 Move one completed sale onto the customer it was actually for.
 
-The sale, its invoice, and its own debt row move. A later debt repayment
-that had been applied to the sale stays on the customer it was keyed to
-and is applied to that customer's remaining debt.
+Money taken at the counter stays on the sale. A repayment recorded later
+stays on the customer it was keyed to. That later repayment is moved on
+its own from Debt Management.
 """
 
 from __future__ import annotations
@@ -24,23 +24,24 @@ from sales.sale_debt_sync import (
 )
 
 
-def _release_settlements_on_sale(sale: Sale) -> list[tuple[CustomerWalletTransaction, Decimal]]:
+def _release_later_repayments(sale: Sale) -> list[tuple[CustomerWalletTransaction, Decimal]]:
     """
-    Take later debt-repayment chunks off this sale only.
+    Take later debt repayments off this sale and leave the counter cash.
 
-    Checkout cash on ``amount_paid`` stays. The repayment credit stays on
-    the customer it was keyed to.
+    ``amount_paid`` keeps whatever was received at the counter. Each later
+    repayment credit stays on the customer it was keyed to.
 
     Args:
-        sale: Completed sale whose ``amount_paid`` may include settlements.
+        sale: Completed sale. ``amount_paid`` may include 0–200 later
+        repayments on top of the counter cash.
 
     Returns:
-        Pairs of (settlement credit, amount freed). One pair per allocation
-        on the sale, 0–200. Each amount is 0.01 up to that allocation, and
-        the total freed is never more than ``amount_paid``.
+        Pairs of (repayment credit, amount taken off this sale). One pair
+        per allocation, 0–200. Each amount is 0.01 up to that allocation,
+        and the total taken off is never more than ``amount_paid``.
 
     Raises:
-        ValidationError: More than 200 repayment chunks are on this one sale.
+        ValidationError: More than 200 later repayments are on this one sale.
     """
     rows = list(
         DebtSettlementAllocation.objects.filter(sale=sale)
@@ -101,9 +102,10 @@ def transfer_sale_customer(
     """
     Move one completed sale onto another customer.
 
-    Stock, price, and quantity stay as they are. A repayment that had
-    cleared part of this sale is not moved; it stays with the customer
-    it was keyed to.
+    Stock, price, and quantity stay as they are. Cash taken at the counter
+    stays on the sale, so a 1,500 sale with 500 paid at the counter arrives
+    as 500 paid and 1,000 still owed. A repayment recorded later stays on
+    the original customer and is moved from Debt Management.
 
     Args:
         sale_id: Primary key of a completed sale, 1–2^31-1.
@@ -148,10 +150,10 @@ def transfer_sale_customer(
     if target is None or not target.is_active:
         raise ValidationError('Choose an active customer.')
 
-    freed = _release_settlements_on_sale(sale)
+    freed = _release_later_repayments(sale)
     CustomerWalletTransaction.objects.filter(
         sale=sale,
-        source_type__in=('debt', 'payment'),
+        source_type__in=('debt', 'payment', 'overpayment'),
     ).update(customer_id=target.pk)
 
     actor = ''

@@ -120,9 +120,9 @@ export default function TransferSaleCustomerDialog({
         <DialogHeader>
           <DialogTitle>Move this sale to the correct customer</DialogTitle>
           <DialogDescription>
-            {sale.sale_number} ({formatCurrency(sale.total)}) stays the same
-            sale. Only the customer changes. Payments that were keyed
-            separately stay where they are.
+            {sale.sale_number} ({formatCurrency(sale.total)}) moves with the
+            money paid at the counter. A payment recorded later stays on the
+            original customer. Move that later payment from Debt Management.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">

@@ -467,29 +467,109 @@ class IndividualCustomerCorrectionTests(SuperAdminAPITestCase):
         self.assertEqual(self._wallet_sum(), before)
         _assert_books(self.cust1, self.cust2)
 
-    def test_sale_move_leaves_the_payment_on_the_old_customer(self):
-        """800 sale moves to customer 3. The 200 payment stays and clears the other 100 sale."""
-        moving = _debt_sale(self.cust4, self.sales, 'EDGE-MV', '800.00')
-        other = _debt_sale(self.cust4, self.sales, 'EDGE-STAY', '100.00')
+    def test_counter_cash_moves_and_a_later_repayment_stays(self):
+        """1,500 with 500 at the counter and 200 paid later. Only the 500 moves."""
+        sale = Sale.objects.create(
+            sale_number='EDGE-COUNTER',
+            status='completed',
+            sale_type='pos',
+            entry_source='pos',
+            customer=self.cust4,
+            cashier=self.sales,
+            subtotal=Decimal('1500.00'),
+            total=Decimal('1500.00'),
+            amount_paid=Decimal('500.00'),
+            payment_method='cash',
+        )
+        CustomerWalletTransaction.objects.create(
+            customer=self.cust4,
+            transaction_type='debit',
+            source_type='debt',
+            amount=Decimal('1000.00'),
+            balance_after=Decimal('-1000.00'),
+            sale=sale,
+            created_by=self.sales,
+        )
+        self.cust4.wallet_balance = Decimal('-1000.00')
+        self.cust4.save(update_fields=['wallet_balance', 'updated_at'])
         txn = CustomerService().record_wallet_payment(
             customer=self.cust4, amount=Decimal('200.00'), payment_method='cash', user=self.admin,
         )
         before = self._wallet_sum()
         transfer_sale_customer(
-            sale_id=moving.id, target_customer_id=self.cust3.id, user=self.admin, send_sms=False,
+            sale_id=sale.id, target_customer_id=self.cust3.id, user=self.admin, send_sms=False,
         )
-        moving.refresh_from_db()
-        other.refresh_from_db()
+        sale.refresh_from_db()
         txn.refresh_from_db()
         self.cust3.refresh_from_db()
         self.cust4.refresh_from_db()
-        self.assertEqual(moving.customer_id, self.cust3.id)
-        self.assertEqual(moving.amount_paid, Decimal('0.00'))
+        self.assertEqual(sale.customer_id, self.cust3.id)
+        self.assertEqual(sale.amount_paid, Decimal('500.00'))
         self.assertEqual(txn.customer_id, self.cust4.id)
-        self.assertEqual(other.customer_id, self.cust4.id)
-        self.assertEqual(other.amount_paid, Decimal('100.00'))
-        self.assertEqual(self.cust3.wallet_balance, Decimal('-800.00'))
-        self.assertEqual(self.cust4.wallet_balance, Decimal('100.00'))
+        self.assertFalse(
+            DebtSettlementAllocation.objects.filter(wallet_transaction=txn, sale=sale).exists()
+        )
+        self.assertEqual(self.cust3.wallet_balance, Decimal('-1000.00'))
+        self.assertEqual(self.cust4.wallet_balance, Decimal('200.00'))
+        self.assertEqual(self._wallet_sum(), before)
+        self.assertNotIn(CUST3_PHONE, sale.notes or '')
+        self.assertNotIn(CUST4_PHONE, sale.notes or '')
+        _assert_books(self.cust3, self.cust4)
+
+    def test_later_repayment_stays_when_it_also_paid_another_sale(self):
+        """A later 900 stays on the original customer when the 1,500 sale moves."""
+        small = _debt_sale(self.cust4, self.sales, 'EDGE-400', '400.00')
+        large = _debt_sale(self.cust4, self.sales, 'EDGE-1500B', '1500.00')
+        txn = CustomerService().record_wallet_payment(
+            customer=self.cust4, amount=Decimal('900.00'), payment_method='cash', user=self.admin,
+        )
+        before = self._wallet_sum()
+        transfer_sale_customer(
+            sale_id=large.id, target_customer_id=self.cust3.id, user=self.admin,
+        )
+        small.refresh_from_db()
+        large.refresh_from_db()
+        txn.refresh_from_db()
+        self.cust3.refresh_from_db()
+        self.cust4.refresh_from_db()
+        self.assertEqual(large.customer_id, self.cust3.id)
+        self.assertEqual(large.amount_paid, Decimal('0.00'))
+        self.assertEqual(small.customer_id, self.cust4.id)
+        self.assertEqual(small.amount_paid, Decimal('400.00'))
+        self.assertEqual(txn.customer_id, self.cust4.id)
+        self.assertEqual(txn.amount, Decimal('900.00'))
+        self.assertFalse(
+            CustomerWalletTransaction.objects.filter(
+                customer=self.cust3, source_type='debt_settlement',
+            ).exists()
+        )
+        self.assertEqual(self.cust3.wallet_balance, Decimal('-1500.00'))
+        self.assertEqual(self.cust4.wallet_balance, Decimal('500.00'))
+        self.assertEqual(self._wallet_sum(), before)
+        _assert_books(self.cust3, self.cust4)
+
+    def test_eight_later_repayments_stay_on_the_original_customer(self):
+        sale = _debt_sale(self.cust4, self.sales, 'EDGE-EIGHT', '1500.00')
+        txns = [
+            CustomerService().record_wallet_payment(
+                customer=self.cust4, amount=Decimal('50.00'), payment_method='cash', user=self.admin,
+            )
+            for _ in range(8)
+        ]
+        before = self._wallet_sum()
+        transfer_sale_customer(
+            sale_id=sale.id, target_customer_id=self.cust3.id, user=self.admin,
+        )
+        sale.refresh_from_db()
+        self.cust3.refresh_from_db()
+        self.cust4.refresh_from_db()
+        self.assertEqual(sale.amount_paid, Decimal('0.00'))
+        self.assertEqual(sale.customer_id, self.cust3.id)
+        for txn in txns:
+            txn.refresh_from_db()
+            self.assertEqual(txn.customer_id, self.cust4.id)
+        self.assertEqual(self.cust3.wallet_balance, Decimal('-1500.00'))
+        self.assertEqual(self.cust4.wallet_balance, Decimal('400.00'))
         self.assertEqual(self._wallet_sum(), before)
         _assert_books(self.cust3, self.cust4)
 
@@ -516,6 +596,43 @@ class IndividualCustomerCorrectionTests(SuperAdminAPITestCase):
         self.assertFalse(
             CustomerWalletTransaction.objects.filter(sale=sale, source_type='debt').exists()
         )
+        self.assertEqual(self._wallet_sum(), before)
+        _assert_books(self.cust3, self.cust4)
+
+    def test_counter_overpayment_moves_with_the_sale(self):
+        sale = Sale.objects.create(
+            sale_number='EDGE-OVER',
+            status='completed',
+            sale_type='pos',
+            entry_source='pos',
+            customer=self.cust4,
+            cashier=self.sales,
+            subtotal=Decimal('250.00'),
+            total=Decimal('250.00'),
+            amount_paid=Decimal('250.00'),
+            payment_method='cash',
+        )
+        extra = CustomerWalletTransaction.objects.create(
+            customer=self.cust4,
+            transaction_type='credit',
+            source_type='overpayment',
+            amount=Decimal('50.00'),
+            balance_after=Decimal('50.00'),
+            sale=sale,
+            created_by=self.sales,
+        )
+        self.cust4.wallet_balance = Decimal('50.00')
+        self.cust4.save(update_fields=['wallet_balance', 'updated_at'])
+        before = self._wallet_sum()
+        transfer_sale_customer(
+            sale_id=sale.id, target_customer_id=self.cust3.id, user=self.admin,
+        )
+        extra.refresh_from_db()
+        self.cust3.refresh_from_db()
+        self.cust4.refresh_from_db()
+        self.assertEqual(extra.customer_id, self.cust3.id)
+        self.assertEqual(self.cust3.wallet_balance, Decimal('50.00'))
+        self.assertEqual(self.cust4.wallet_balance, Decimal('0.00'))
         self.assertEqual(self._wallet_sum(), before)
         _assert_books(self.cust3, self.cust4)
 
@@ -557,8 +674,8 @@ class IndividualCustomerCorrectionTests(SuperAdminAPITestCase):
         self.assertEqual(self._wallet_sum(), before)
         _assert_books(self.cust3, self.cust4)
 
-    def test_sale_then_payment_end_on_the_same_customer(self):
-        """Move the sale, then move the payment that had been left behind."""
+    def test_later_repayment_stays_and_clears_the_other_sale(self):
+        """800 sale moves unpaid. The later 200 stays and clears the other 100 sale."""
         moving = _debt_sale(self.cust4, self.sales, 'EDGE-SEQ', '800.00')
         other = _debt_sale(self.cust4, self.sales, 'EDGE-SEQ-B', '100.00')
         txn = CustomerService().record_wallet_payment(
@@ -568,21 +685,18 @@ class IndividualCustomerCorrectionTests(SuperAdminAPITestCase):
         transfer_sale_customer(
             sale_id=moving.id, target_customer_id=self.cust3.id, user=self.admin,
         )
-        transfer_debt_settlement_customer(
-            txn_id=txn.id, target_customer_id=self.cust3.id, user=self.admin, move_sales=False,
-        )
         moving.refresh_from_db()
         other.refresh_from_db()
         txn.refresh_from_db()
         self.cust3.refresh_from_db()
         self.cust4.refresh_from_db()
         self.assertEqual(moving.customer_id, self.cust3.id)
-        self.assertEqual(moving.amount_paid, Decimal('200.00'))
-        self.assertEqual(txn.customer_id, self.cust3.id)
+        self.assertEqual(moving.amount_paid, Decimal('0.00'))
+        self.assertEqual(txn.customer_id, self.cust4.id)
         self.assertEqual(other.customer_id, self.cust4.id)
-        self.assertEqual(other.amount_paid, Decimal('0.00'))
-        self.assertEqual(self.cust4.wallet_balance, Decimal('-100.00'))
-        self.assertEqual(self.cust3.wallet_balance, Decimal('-600.00'))
+        self.assertEqual(other.amount_paid, Decimal('100.00'))
+        self.assertEqual(self.cust3.wallet_balance, Decimal('-800.00'))
+        self.assertEqual(self.cust4.wallet_balance, Decimal('100.00'))
         self.assertEqual(self._wallet_sum(), before)
         _assert_books(self.cust3, self.cust4)
 
