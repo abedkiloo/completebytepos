@@ -368,6 +368,23 @@ class TransferDebtSettlementCustomerSerializer(serializers.Serializer):
 
     customer_id = serializers.IntegerField(min_value=1, max_value=2_147_483_647)
     move_sales = serializers.BooleanField(required=False, default=False)
+    send_sms = serializers.BooleanField(required=False, default=False)
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        max_length=200,
+    )
+
+
+class TransferSaleCustomerSerializer(serializers.Serializer):
+    """Move one completed sale onto the customer it was for.
+
+    ``customer_id`` is that customer, 1–2^31-1. ``send_sms`` texts them
+    only when an admin sets it. ``reason`` is optional, 0–200 characters.
+    """
+
+    customer_id = serializers.IntegerField(min_value=1, max_value=2_147_483_647)
+    send_sms = serializers.BooleanField(required=False, default=False)
     reason = serializers.CharField(
         required=False,
         allow_blank=True,

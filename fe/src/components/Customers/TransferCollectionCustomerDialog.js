@@ -34,7 +34,8 @@ export default function TransferCollectionCustomerDialog({
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState([]);
   const [chosen, setChosen] = useState(null);
-  const [moveSales, setMoveSales] = useState(true);
+  const [moveSales, setMoveSales] = useState(false);
+  const [sendSms, setSendSms] = useState(false);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -43,7 +44,8 @@ export default function TransferCollectionCustomerDialog({
     setQuery('');
     setMatches([]);
     setChosen(null);
-    setMoveSales(true);
+    setMoveSales(false);
+    setSendSms(false);
     setReason('');
   }, [open, collection]);
 
@@ -91,15 +93,18 @@ export default function TransferCollectionCustomerDialog({
     }
     setBusy(true);
     try {
-      await customersAPI.transferWalletSettlementCustomer(collection.id, {
+      const res = await customersAPI.transferWalletSettlementCustomer(collection.id, {
         customer_id: chosen.id,
         move_sales: moveSales,
+        send_sms: sendSms,
         reason: reason.trim(),
       });
+      const smsNote =
+        sendSms && !res?.data?.sms_sent ? ' SMS was not sent.' : '';
       toast.success(
-        moveSales
+        (moveSales
           ? 'Repayment and its sales moved to the correct customer'
-          : 'Repayment moved to the correct customer'
+          : 'This payment moved to the correct customer') + smsNote
       );
       onOpenChange?.(false);
       onSaved?.();
@@ -120,9 +125,10 @@ export default function TransferCollectionCustomerDialog({
         <DialogHeader>
           <DialogTitle>Move repayment to the correct customer</DialogTitle>
           <DialogDescription>
-            {formatCurrency(collection.amount)} is on{' '}
-            {collection.customer_name || 'the current customer'}. Choose who
-            actually paid. The amount is not changed.
+            {formatCurrency(collection.amount)} was keyed on{' '}
+            {collection.customer_name || 'the current customer'}. This moves
+            only this payment. Their sales stay put, and the amount pays the
+            correct customer's open debt.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
@@ -168,10 +174,20 @@ export default function TransferCollectionCustomerDialog({
               data-testid="transfer-move-sales"
             />
             <span>
-              Also move the sales this repayment paid onto that customer.
-              Leave this off when the sales are already on the right customer
-              and only the repayment was keyed wrong.
+              Also move the sales this payment cleared. Leave this off when
+              only the payment was keyed on the wrong customer.
             </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={sendSms}
+              onChange={(e) => setSendSms(e.target.checked)}
+              disabled={busy}
+              data-testid="transfer-send-sms"
+            />
+            <span>Send an SMS to the correct customer about this payment.</span>
           </label>
           <div className="space-y-2">
             <Label htmlFor="transfer-customer-reason">Reason (optional)</Label>
@@ -194,7 +210,7 @@ export default function TransferCollectionCustomerDialog({
             </Button>
             <Button type="submit" disabled={busy || !chosen}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Move repayment
+              Move this payment
             </Button>
           </DialogFooter>
         </form>

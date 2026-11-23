@@ -141,6 +141,7 @@ def transfer_debt_settlement_customer(
     user=None,
     reason: str = '',
     move_sales: bool = False,
+    send_sms: bool = False,
 ) -> dict:
     """
     Move a posted debt repayment from the wrong customer to the right one.
@@ -157,10 +158,13 @@ def transfer_debt_settlement_customer(
         reason: Optional note, 0–200 characters. Blank is allowed.
         move_sales: When true, also change ``Sale.customer`` for sales this
             repayment paid. False leaves those sales on the original customer.
+        send_sms: When True, queue one payment SMS to the target customer.
+            False sends nothing. Default False.
 
     Returns:
-        Dict with ``transaction``, ``from_customer``, ``to_customer``, and
-        ``moved_sale_ids`` (0–50 sale ids). Wallet balances are rebuilt.
+        Dict with ``transaction``, ``from_customer``, ``to_customer``,
+        ``moved_sale_ids`` (0–50 sale ids), and ``sms_sent``. Wallet
+        balances are rebuilt.
 
     Raises:
         CustomerWalletTransaction.DoesNotExist: Unknown txn id.
@@ -253,9 +257,24 @@ def transfer_debt_settlement_customer(
     txn.refresh_from_db()
     old.refresh_from_db()
     target.refresh_from_db()
+    sms_sent = False
+    if send_sms:
+        try:
+            from messaging.customer_notify import notify_customer_debt_settlement
+
+            msg = notify_customer_debt_settlement(
+                target,
+                amount=txn.amount,
+                payment_reference=(txn.reference or '')[:100],
+                user=user,
+            )
+            sms_sent = msg is not None
+        except Exception:
+            sms_sent = False
     return {
         'transaction': txn,
         'from_customer': old,
         'to_customer': target,
         'moved_sale_ids': moved_sale_ids,
+        'sms_sent': sms_sent,
     }

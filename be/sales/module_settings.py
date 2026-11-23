@@ -49,6 +49,17 @@ def sales_payments_trail_export_enabled() -> bool:
     return is_module_feature_enabled(MODULE, 'payments_trail_export')
 
 
+def sales_transfer_sale_customer_enabled() -> bool:
+    """
+    Catalog feature: move one completed sale onto another customer.
+
+    Returns:
+        True when ``transfer_sale_customer`` is enabled. A missing feature
+        row uses the registry default (on). False when the sales module is off.
+    """
+    return is_module_feature_enabled(MODULE, 'transfer_sale_customer')
+
+
 def sales_late_sale_sms_enabled() -> bool:
     """Catalog feature: opt-in SMS when recording a past (backfill) sale."""
     return is_module_feature_enabled(MODULE, 'late_sale_sms')

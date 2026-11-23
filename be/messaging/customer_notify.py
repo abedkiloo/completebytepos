@@ -93,6 +93,7 @@ def notify_customer_sale_completed(
     *,
     user=None,
     force_late_entry: bool = False,
+    force_send: bool = False,
 ) -> MessageOutbox | None:
     """
     Queue sale-complete SMS after checkout.
@@ -107,6 +108,8 @@ def notify_customer_sale_completed(
         force_late_entry: When True, allow SMS for backfill/late sales.
             Default False preserves historical “never text late sales”
             unless the operator explicitly chose to send.
+        force_send: When True, an admin correction already chose to text.
+            Skips the backfill gate. Still skipped when the customer has no phone.
 
     Returns:
         Outbox row when queued, else ``None`` (no customer/phone, skipped
@@ -119,7 +122,7 @@ def notify_customer_sale_completed(
         customer = getattr(sale, 'customer', None)
         if customer is None:
             return None
-        if getattr(sale, 'entry_source', '') == 'backfill':
+        if getattr(sale, 'entry_source', '') == 'backfill' and not force_send:
             if not force_late_entry:
                 return None
             from sales.module_settings import sales_late_sale_sms_enabled

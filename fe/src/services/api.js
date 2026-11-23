@@ -449,6 +449,12 @@ export const salesAPI = {
   rollback: (id, data) => api.post(`/sales/${id}/rollback/`, data),
   unvoid: (id, data) => api.post(`/sales/${id}/unvoid/`, data || {}),
   correctDate: (id, data) => api.post(`/sales/${id}/correct-date/`, data),
+  /**
+   * Move one completed sale onto another customer.
+   * @param {number} id Sale id, 1–2^31-1.
+   * @param {{ customer_id: number, send_sms?: boolean, reason?: string }} data
+   */
+  transferCustomer: (id, data) => api.post(`/sales/${id}/transfer-customer/`, data),
   backfill: (data, photoFile) => {
     if (photoFile) {
       const body = new FormData();

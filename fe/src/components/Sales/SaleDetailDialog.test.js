@@ -86,6 +86,7 @@ describe('SaleDetailDialog', () => {
     const receipt = document.querySelector('.receipt-content');
 
     expect(screen.getByText(/Sale — S-100/)).toBeInTheDocument();
+    expect(screen.queryByTestId('sale-detail-move-customer')).not.toBeInTheDocument();
     expect(screen.getByText('Omuwenga Suppliers')).toBeInTheDocument();
     expect(screen.getByText('Martha')).toBeInTheDocument();
     expect(within(receipt).getAllByText('Large / White').length).toBe(2);
@@ -100,6 +101,16 @@ describe('SaleDetailDialog', () => {
     expect(screen.getByText('Partial payment')).toBeInTheDocument();
     expect(screen.getByText(/Amount refunded/)).toBeInTheDocument();
     expect(screen.getByText(/Still refundable/)).toBeInTheDocument();
+  });
+
+  it('shows move-this-sale only for an admin', () => {
+    localStorage.setItem('user', JSON.stringify({ is_superuser: false }));
+    localStorage.setItem('profile', JSON.stringify({ role: 'admin' }));
+    renderDialog(
+      <SaleDetailDialog sale={sale} open onOpenChange={() => {}} showCustomerName />
+    );
+    expect(screen.getByTestId('sale-detail-move-customer')).toBeInTheDocument();
+    localStorage.clear();
   });
 
   it('shows accountability activity when the sale payload includes it', () => {

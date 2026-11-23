@@ -20,6 +20,7 @@ from .serializers import (
     CustomerWalletTransactionSerializer,
     CorrectDebtSettlementAmountSerializer,
     TransferDebtSettlementCustomerSerializer,
+    TransferSaleCustomerSerializer,
     ReceiveWalletPaymentSerializer,
 )
 from .refunds import SaleRefundService
@@ -1123,6 +1124,83 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         sale.refresh_from_db()
         return Response(SaleSerializer(sale).data)
 
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='transfer-customer',
+        permission_classes=[
+            IsAuthenticated,
+            RequirePerm('debt_management', 'correct'),
+        ],
+    )
+    @transaction.atomic
+    def transfer_customer(self, request, pk=None):
+        """
+        Move one completed sale onto the customer it was for.
+
+        Body:
+            customer_id (required) — active customer id, 1–2^31-1.
+            send_sms (optional) — text that customer. Default false.
+            reason (optional) — note, 0–200 characters.
+
+        Payments keyed on the old customer stay there. The response has
+        customer names and wallet balances, and does not include phone numbers.
+        """
+        from sales.module_settings import sales_transfer_sale_customer_enabled
+        from sales.sale_customer_transfer import transfer_sale_customer
+
+        if not sales_transfer_sale_customer_enabled():
+            return Response(
+                {'error': 'Moving a sale to another customer is turned off.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        sale = self.get_object()
+        serializer = TransferSaleCustomerSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        try:
+            result = transfer_sale_customer(
+                sale_id=sale.pk,
+                target_customer_id=data['customer_id'],
+                user=request.user,
+                reason=data.get('reason', ''),
+                send_sms=bool(data.get('send_sms')),
+            )
+        except ValidationError as exc:
+            return Response(
+                {'error': validation_error_message(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        sale = result['sale']
+        source = result['from_customer']
+        target = result['to_customer']
+        try:
+            from utils.audit_events import log_sale_customer_transferred
+
+            log_sale_customer_transferred(
+                request,
+                sale=sale,
+                from_customer=source,
+                to_customer=target,
+                reason=data.get('reason', ''),
+                sms_sent=bool(result['sms_sent']),
+            )
+        except Exception:
+            pass
+        return Response(
+            {
+                'sale_id': sale.id,
+                'sale_number': sale.sale_number,
+                'from_customer_id': source.id if source else None,
+                'to_customer_id': target.id,
+                'from_customer_name': source.name if source else '',
+                'to_customer_name': target.name,
+                'from_wallet_balance': str(source.wallet_balance) if source else None,
+                'to_wallet_balance': str(target.wallet_balance),
+                'sms_sent': bool(result['sms_sent']),
+            }
+        )
+
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def refund(self, request, pk=None):
@@ -2165,6 +2243,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 user=request.user,
                 reason=data.get('reason', ''),
                 move_sales=bool(data.get('move_sales')),
+                send_sms=bool(data.get('send_sms')),
             )
         except CustomerWalletTransaction.DoesNotExist:
             return Response(
@@ -2203,6 +2282,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 'from_wallet_balance': str(source.wallet_balance),
                 'to_wallet_balance': str(target.wallet_balance),
                 'moved_sale_ids': result['moved_sale_ids'],
+                'sms_sent': bool(result.get('sms_sent')),
             }
         )
 

@@ -232,7 +232,7 @@ export default function PaymentDetailDialog({
                 onClick={onTransfer}
                 data-testid="payment-detail-transfer"
               >
-                Move to correct customer
+                Move this payment
               </Button>
             ) : null}
           </div>

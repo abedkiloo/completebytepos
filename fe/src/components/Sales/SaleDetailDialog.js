@@ -39,8 +39,12 @@ import {
   saleDateInputValue,
   saleMaxCorrectableDateInput,
   userCanCorrectSaleDate,
+  userHasAdminSaleOverride,
 } from '../../utils/saleCompletionApproval';
 import { salesAPI } from '../../services/api';
+import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
+import TransferSaleCustomerDialog from './TransferSaleCustomerDialog';
 import { toast } from '../../utils/toast';
 import { hasDuplicateSaleLines } from '../../utils/detectDuplicateSaleLines';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
@@ -85,6 +89,7 @@ export default function SaleDetailDialog({
   const [discarding, setDiscarding] = useState(false);
   const [saleDate, setSaleDate] = useState(() => saleDateInputValue(sale?.occurred_at || sale?.created_at));
   const [savingDate, setSavingDate] = useState(false);
+  const [showMoveCustomer, setShowMoveCustomer] = useState(false);
 
   useEffect(() => {
     setShowReturn(false);
@@ -96,6 +101,7 @@ export default function SaleDetailDialog({
     setDiscardReason('');
     setDiscardConfirmNumber('');
     setSaleDate(saleDateInputValue(sale?.occurred_at || sale?.created_at));
+    setShowMoveCustomer(false);
   }, [sale?.id, sale?.occurred_at, sale?.created_at, sale?.amount_paid]);
 
   if (!sale) return null;
@@ -116,6 +122,12 @@ export default function SaleDetailDialog({
   const canCorrectDate =
     sale.status !== 'cancelled' &&
     (sale.can_correct_date === true || userCanCorrectSaleDate());
+  const auth = getStoredAuth();
+  const canMoveCustomer =
+    sale.status === 'completed' &&
+    (userHasAdminSaleOverride(auth) ||
+      hasPermission(auth.permissions, 'debt_management', 'correct')) &&
+    isModuleFeatureEnabled('sales', 'transfer_sale_customer', true);
   const originalSaleDate = saleDateInputValue(sale.occurred_at || sale.created_at);
   const saleDateChanged = Boolean(saleDate) && saleDate !== originalSaleDate;
 
@@ -707,6 +719,16 @@ export default function SaleDetailDialog({
                 </Button>
               </span>
             ) : null}
+            {canMoveCustomer ? (
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="sale-detail-move-customer"
+                onClick={() => setShowMoveCustomer(true)}
+              >
+                Move this sale
+              </Button>
+            ) : null}
             {canDiscard ? (
               <Button
                 variant="destructive"
@@ -730,6 +752,17 @@ export default function SaleDetailDialog({
           </div>
         </DialogFooter>
       </DialogContent>
+      {showMoveCustomer ? (
+        <TransferSaleCustomerDialog
+          open
+          sale={sale}
+          onOpenChange={setShowMoveCustomer}
+          onSaved={() => {
+            setShowMoveCustomer(false);
+            onUpdated?.();
+          }}
+        />
+      ) : null}
     </Dialog>
   );
 }

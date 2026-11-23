@@ -234,6 +234,61 @@ def log_debt_settlement_transferred(
     )
 
 
+def log_sale_customer_transferred(
+    request,
+    *,
+    sale,
+    from_customer,
+    to_customer,
+    reason: str = '',
+    sms_sent: bool = False,
+):
+    """
+    Audit moving one completed sale onto another customer.
+
+    Args:
+        request: Actor request-like object.
+        sale: Sale after the move.
+        from_customer: Previous customer, or None. Name only, no phone.
+        to_customer: Customer who now owns the sale.
+        reason: Optional note, truncated to 200 characters.
+        sms_sent: True when an SMS was queued to the new customer.
+
+    Returns:
+        None.
+
+    Side effects:
+        Appends one ``AuditLog`` with action ``sale_customer_transferred``.
+    """
+    changes = {
+        'lifecycle': 'customer_transferred',
+        'sale_id': getattr(sale, 'id', None),
+        'sale_number': (getattr(sale, 'sale_number', '') or '')[:50],
+        'from_customer_id': getattr(from_customer, 'id', None),
+        'from_customer_name': (getattr(from_customer, 'name', '') or '')[:120],
+        'to_customer_id': getattr(to_customer, 'id', None),
+        'to_customer_name': (getattr(to_customer, 'name', '') or '')[:120],
+        'from_wallet_balance': _money(getattr(from_customer, 'wallet_balance', None)),
+        'to_wallet_balance': _money(getattr(to_customer, 'wallet_balance', None)),
+        'sms_sent': bool(sms_sent),
+        'reason': (reason or '')[:200],
+    }
+    label = (
+        f"Sale moved · {changes['sale_number'] or 'Sale'} · "
+        f"{changes['from_customer_name'] or 'Customer'} → "
+        f"{changes['to_customer_name'] or 'Customer'}"
+    )
+    instance = sale if isinstance(sale, Model) else None
+    log_domain_event(
+        request,
+        'sale_customer_transferred',
+        instance,
+        module='sales',
+        changes=changes,
+        object_repr=label[:255],
+    )
+
+
 def log_holding_saved(request, holding, *, created: bool):
     log_domain_event(
         request,

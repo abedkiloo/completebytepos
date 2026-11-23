@@ -46,7 +46,7 @@ describe('TransferCollectionCustomerDialog', () => {
     customersAPI.transferWalletSettlementCustomer.mockResolvedValue({ data: {} });
   });
 
-  it('moves the repayment and its sales, and does not list the current customer', async () => {
+  it('moves only this payment, and does not list the current customer', async () => {
     render(
       <TransferCollectionCustomerDialog
         open
@@ -64,12 +64,13 @@ describe('TransferCollectionCustomerDialog', () => {
     expect(screen.queryByRole('button', { name: 'Wrong Shop' })).not.toBeInTheDocument();
     expect(screen.queryByText('0711999002')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Right Shop' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Move repayment' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Move this payment' }));
 
     await waitFor(() =>
       expect(customersAPI.transferWalletSettlementCustomer).toHaveBeenCalledWith(12, {
         customer_id: 9,
-        move_sales: true,
+        move_sales: false,
+        send_sms: false,
         reason: '',
       })
     );
@@ -90,11 +91,12 @@ describe('TransferCollectionCustomerDialog', () => {
     await waitFor(() => screen.getByRole('button', { name: 'Right Shop' }));
     fireEvent.click(screen.getByRole('button', { name: 'Right Shop' }));
     fireEvent.click(screen.getByTestId('transfer-move-sales'));
-    fireEvent.click(screen.getByRole('button', { name: 'Move repayment' }));
+    fireEvent.click(screen.getByTestId('transfer-send-sms'));
+    fireEvent.click(screen.getByRole('button', { name: 'Move this payment' }));
     await waitFor(() =>
       expect(customersAPI.transferWalletSettlementCustomer).toHaveBeenCalledWith(
         12,
-        expect.objectContaining({ customer_id: 9, move_sales: false })
+        expect.objectContaining({ customer_id: 9, move_sales: true, send_sms: true })
       )
     );
   });

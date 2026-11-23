@@ -135,6 +135,13 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 10,
             ),
             _f(
+                'transfer_sale_customer',
+                'Move a sale to the right customer',
+                'An admin can move one completed sale onto the customer it was for. '
+                'Payments stay where they were keyed.',
+                12,
+            ),
+            _f(
                 'field_load',
                 'Field loads',
                 'Selectable sales feature, on by default. A sales person writes the '
@@ -532,7 +539,14 @@ PRESETS: dict[str, dict[str, Any]] = {
         },
         'features': {
             # No retail POS, normal sale, or barcode module in the starter pack.
-            'sales': ['billing_pos', 'receipt_printing', 'sales_history', 'daily_sales', 'field_load'],
+            'sales': [
+                'billing_pos',
+                'receipt_printing',
+                'sales_history',
+                'daily_sales',
+                'field_load',
+                'transfer_sale_customer',
+            ],
             'products': ['bulk_operations', 'csv_import_export'],
             'customers': [
                 'customer_management',
