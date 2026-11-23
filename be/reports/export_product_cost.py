@@ -9,8 +9,9 @@ def user_may_export_product_cost(user) -> bool:
     """
     Whether this user may include product cost columns on file exports.
 
-    Admins (staff / superuser / profile admin role) always can. Matches the
-    store-facing rule that cost is an admin Excel concern.
+    An admin or super admin always can. Any other role can when
+    ``products.view_cost`` or ``reports.profit`` is checked. Staff alone
+    does not reveal cost.
 
     Args:
         user: Authenticated Django user, or None.
@@ -18,16 +19,9 @@ def user_may_export_product_cost(user) -> bool:
     Returns:
         True when cost/COGS columns should appear on product-bearing workbooks.
     """
-    if user is None or not getattr(user, 'is_authenticated', False):
-        return False
-    if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
-        return True
-    profile = getattr(user, 'profile', None)
-    if profile is None:
-        return False
-    if getattr(profile, 'is_super_admin', False) or getattr(profile, 'is_admin', False):
-        return True
-    return False
+    from products.cost_access import user_may_see_cost
+
+    return user_may_see_cost(user)
 
 
 def request_wants_file_export(request) -> bool:

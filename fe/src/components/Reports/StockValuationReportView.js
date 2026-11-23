@@ -5,6 +5,7 @@ import { reportsAPI } from '../../services/api';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { reportsShowCostAndProfit } from '../../utils/reportDisplay';
+import { userMaySeeProductCost } from '../../utils/productAccess';
 import {
   resolveStoreName,
   resolveStoreLogoUrl,
@@ -23,7 +24,7 @@ const HEAD_NUM = `${NUM} font-medium`;
 export default function StockValuationReportView() {
   const { settings } = useStoreSettings();
   const { settings: reportSettings } = useModuleSettings('reports');
-  const showCost = reportsShowCostAndProfit(reportSettings);
+  const showCost = reportsShowCostAndProfit(reportSettings) && userMaySeeProductCost();
   const storeName = resolveStoreName(settings);
   const [includeZero, setIncludeZero] = useState(false);
   const [loading, setLoading] = useState(true);

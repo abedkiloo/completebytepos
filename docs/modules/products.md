@@ -24,6 +24,7 @@ Product catalog: categories, sizes/colors, units, products, and variants. Owns s
 - Create product + variants in **one** `transaction.atomic()`.
 - Duplicate product **names** → 400. SKU/barcode unique.
 - Stock/price/cost ≥ 0 (DB check on stock).
+- Cost, margin, profit, and stock value are returned only to an admin or super admin, or to a role with `products.view_cost` or `reports.profit` checked. A supplier phone on the product is returned only to management.
 - Variant parents: sellable stock is variant-level for POS.
 - Hard delete blocked if stock/history/sales usage exists.
 

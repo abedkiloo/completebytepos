@@ -52,9 +52,12 @@ class StockMovementSerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         from inventory.module_settings import apply_stock_movement_representation_flags
 
+        from products.cost_access import redact_cost_fields
+
         data = super().to_representation(instance)
         data = serialize_stock_history_entry(instance, data)
-        return apply_stock_movement_representation_flags(data)
+        data = apply_stock_movement_representation_flags(data)
+        return redact_cost_fields(data, request=self.context.get('request'))
 
 
 class StockHistorySerializer(serializers.ModelSerializer):
@@ -96,9 +99,12 @@ class StockHistorySerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         from inventory.module_settings import apply_stock_movement_representation_flags
 
+        from products.cost_access import redact_cost_fields
+
         data = super().to_representation(instance)
         data = serialize_stock_history_entry(instance, data)
-        return apply_stock_movement_representation_flags(data)
+        data = apply_stock_movement_representation_flags(data)
+        return redact_cost_fields(data, request=self.context.get('request'))
 
 
 class StockAdjustmentSerializer(serializers.Serializer):

@@ -63,7 +63,7 @@ import { PageShell, PageHeader, ListPaginationRail } from '../page';
 import { useListOrdering } from '../../hooks/useListOrdering';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { getPersonaFromStorage } from '../../utils/navAccess';
-import { resolveProductFieldAccess } from '../../utils/productAccess';
+import { resolveProductFieldAccess, userMaySeeProductCost } from '../../utils/productAccess';
 import {
   SELLING_PRICE_CLASS,
   VARIANT_PARENT_PRICE_MASK,
@@ -111,7 +111,9 @@ const Products = () => {
   const financialFieldsLocked =
     !fieldAccess.pricing && !fieldAccess.cost && !fieldAccess.stock;
   const showStatus = showProductStatus(productModuleSettings, storeSettings);
-  const showCost = showProductCostPrice(productModuleSettings);
+  const showCost = showProductCostPrice(productModuleSettings) && (
+    fieldAccess.cost || userMaySeeProductCost()
+  );
   const showMrp = showProductMrp(productModuleSettings);
   const showSku = showProductSkuInList(productModuleSettings);
   const showLowStock = showProductLowStockBadges(productModuleSettings);
@@ -122,7 +124,7 @@ const Products = () => {
     persona,
     inventorySettings: inventoryModuleSettings,
   });
-  const showMovementCost = inventoryShowMovementCost(inventoryModuleSettings);
+  const showMovementCost = inventoryShowMovementCost(inventoryModuleSettings) && userMaySeeProductCost();
 
   // --- Data ---
   const [products, setProducts] = useState([]);
@@ -721,7 +723,7 @@ const Products = () => {
                       <th className="px-4 py-2.5 text-right font-medium">MRP</th>
                       )}
                       <th className="px-4 py-2.5 text-right font-medium">Selling</th>
-                      {showCost && fieldAccess.cost && (
+                      {showCost && (
                       <th className="px-4 py-2.5 text-right font-medium">Cost</th>
                       )}
                     </>
@@ -770,7 +772,7 @@ const Products = () => {
                         showProductStatus={showStatus}
                         bulkEnabled={bulkEnabled}
                         showMrp={showMrp}
-                        showCost={showCost && fieldAccess.cost}
+                        showCost={showCost}
                         showSku={showSku}
                         showLowStock={showLowStock}
                         expanded={expandedProductIds.includes(product.id)}
@@ -784,7 +786,7 @@ const Products = () => {
                         <VariantRows
                           product={product}
                           showMrp={showMrp}
-                          showCost={showCost && fieldAccess.cost}
+                          showCost={showCost}
                           showSku={showSku}
                           showLowStock={showLowStock}
                           showProductStatus={showStatus}

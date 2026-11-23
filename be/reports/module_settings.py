@@ -147,13 +147,20 @@ def _strip_summary(summary: dict) -> dict:
     return summary
 
 
-def apply_report_response_flags(data: dict, *, preserve_cost: bool = False) -> dict:
+def apply_report_response_flags(
+    data: dict,
+    *,
+    preserve_cost: bool = False,
+    viewer_may_see_cost: bool = True,
+) -> dict:
     """
     Strip sensitive report fields based on display toggles.
 
     Args:
         data: Report JSON payload.
         preserve_cost: When True (admin Excel/CSV), keep product cost/COGS fields.
+        viewer_may_see_cost: When False, cost, margin, and profit are removed
+            even if the store toggle is on. Default True keeps older callers.
 
     Returns:
         Possibly stripped copy of ``data`` (non-dicts returned unchanged).
@@ -171,7 +178,10 @@ def apply_report_response_flags(data: dict, *, preserve_cost: bool = False) -> d
     if not reports_show_tax():
         data.pop('tax_breakdown', None)
 
-    if not reports_show_cost_and_profit() and not preserve_cost:
+    hide_cost = (not viewer_may_see_cost) or (
+        not reports_show_cost_and_profit() and not preserve_cost
+    )
+    if hide_cost:
         from reports.export_product_cost import strip_product_cost_fields
 
         data.pop('profit', None)

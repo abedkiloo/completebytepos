@@ -11,6 +11,7 @@ import { inventoryAPI } from '../../services/api';
 import { formatCurrency, formatNumber, formatDateTime } from '../../utils/formatters';
 import { isFeatureEnabledInAny } from '../../utils/moduleSettings';
 import { PERSONA, getPersonaFromStorage } from '../../utils/roleAccess';
+import { userMaySeeProductCost } from '../../utils/productAccess';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import {
   inventoryShowStockMovements,
@@ -71,7 +72,7 @@ const Inventory = () => {
   const canShowLowStock = inventoryShowLowStockAlerts(inventorySettings);
   const canShowOutOfStock = inventoryShowOutOfStockAlerts(inventorySettings);
   const canShowReport = inventoryReportEnabled(inventorySettings);
-  const showMovementCost = inventoryShowMovementCost(inventorySettings);
+  const showMovementCost = inventoryShowMovementCost(inventorySettings) && userMaySeeProductCost();
   const [movements, setMovements] = useState([]);
   const [lowStockProducts, setLowStockProducts] = useState([]);
   const [outOfStockProducts, setOutOfStockProducts] = useState([]);

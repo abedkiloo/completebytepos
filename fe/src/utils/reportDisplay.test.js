@@ -33,10 +33,18 @@ describe('reportDisplay', () => {
     expect(userMayViewDashboardRevenue([])).toBe(false);
   });
 
-  test('dashboard profit requires reports.view and store toggle', () => {
+  test('dashboard profit requires reports.view, the store toggle, and cost access', () => {
     const perms = [{ module: 'reports', action: 'view' }];
+    expect(userMayViewDashboardProfit(perms, {})).toBe(false);
+    localStorage.setItem('profile', JSON.stringify({ role: 'super_admin' }));
     expect(userMayViewDashboardProfit(perms, {})).toBe(true);
     expect(userMayViewDashboardProfit(perms, { show_cost_and_profit: false })).toBe(false);
+    localStorage.removeItem('profile');
+    localStorage.setItem('permissions', JSON.stringify([
+      { module: 'products', action: 'view_cost' },
+    ]));
+    expect(userMayViewDashboardProfit(perms, {})).toBe(true);
+    localStorage.removeItem('permissions');
     expect(userMayViewDashboardProfit([], {})).toBe(false);
   });
 });

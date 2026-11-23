@@ -24,12 +24,18 @@ def _coerce_boolish(value):
     return bool(value)
 
 
-def _price_cost_validation_errors(submitted_keys, price, cost):
+def _price_cost_validation_errors(submitted_keys, price, cost, *, reveal_cost=True):
     """Return field-keyed errors when selling price is below cost."""
-    detail = (
-        f'Selling price ({price}) must be greater than or equal to cost ({cost}). '
-        'Increase the selling price or reduce the cost.'
-    )
+    if reveal_cost:
+        detail = (
+            f'Selling price ({price}) must be greater than or equal to cost ({cost}). '
+            'Increase the selling price or reduce the cost.'
+        )
+    else:
+        detail = (
+            'Selling price must be at least the cost. '
+            'Increase the selling price.'
+        )
     cost_changed = 'cost' in submitted_keys
     price_changed = 'price' in submitted_keys or 'selling_price' in submitted_keys
     if cost_changed and not price_changed:
@@ -268,13 +274,22 @@ class ProductVariantSerializer(serializers.ModelSerializer):
                     })
 
         if price is not None and cost is not None and price < cost:
+            from products.cost_access import user_may_see_cost
+
             submitted = set(getattr(self, 'initial_data', {}) or {})
             cost_changed = 'cost' in submitted
             price_changed = 'price' in submitted or 'selling_price' in submitted
-            detail = (
-                f'Selling price ({price}) must be greater than or equal to cost ({cost}). '
-                'Increase the selling price or reduce the cost.'
-            )
+            reveal = user is None or user_may_see_cost(user)
+            if reveal:
+                detail = (
+                    f'Selling price ({price}) must be greater than or equal to cost ({cost}). '
+                    'Increase the selling price or reduce the cost.'
+                )
+            else:
+                detail = (
+                    'Selling price must be at least the cost. '
+                    'Increase the selling price.'
+                )
             if cost_changed and not price_changed:
                 raise serializers.ValidationError({'cost': detail})
             label = self._variant_display_label()
@@ -292,7 +307,10 @@ class ProductVariantSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         from approvals.effective import apply_approved_variant_overlay
 
-        return apply_approved_variant_overlay(instance, data)
+        from products.cost_access import redact_operational_secrets
+
+        data = apply_approved_variant_overlay(instance, data)
+        return redact_operational_secrets(data, request=self.context.get('request'))
 
     def create(self, validated_data):
         product = validated_data.pop('product', None) or self.context.get('parent_product')
@@ -868,9 +886,16 @@ class ProductSerializer(serializers.ModelSerializer):
             and cost is not None
             and price < cost
         ):
+            from products.cost_access import user_may_see_cost
+
             submitted = set(getattr(self, 'initial_data', {}) or {})
             raise serializers.ValidationError(
-                _price_cost_validation_errors(submitted, price, cost)
+                _price_cost_validation_errors(
+                    submitted,
+                    price,
+                    cost,
+                    reveal_cost=user is None or user_may_see_cost(user),
+                )
             )
         mrp = data.get('mrp')
         if mrp is None and self.instance is not None:
@@ -1036,8 +1061,11 @@ class ProductSerializer(serializers.ModelSerializer):
 
         data = super().to_representation(instance)
         data = apply_catalog_variant_representation(instance, data)
+        from products.cost_access import redact_operational_secrets
+
         data = apply_approved_product_overlay(instance, data)
-        return apply_product_list_representation_flags(data)
+        data = apply_product_list_representation_flags(data)
+        return redact_operational_secrets(data, request=self.context.get('request'))
 
     def create(self, validated_data):
         """Create product instance, handling ManyToMany fields separately"""
@@ -1446,8 +1474,11 @@ class ProductListSerializer(serializers.ModelSerializer):
         data = apply_catalog_variant_representation(instance, data)
         if 'selling_price' not in data and data.get('price') is not None:
             data['selling_price'] = data['price']
+        from products.cost_access import redact_operational_secrets
+
         data = apply_approved_product_overlay(instance, data)
-        return apply_product_list_representation_flags(data)
+        data = apply_product_list_representation_flags(data)
+        return redact_operational_secrets(data, request=self.context.get('request'))
 
 
 class ProductSearchSerializer(serializers.ModelSerializer):

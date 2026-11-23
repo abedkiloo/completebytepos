@@ -89,6 +89,36 @@ export function resolveProductFieldAccess(persona, productSettings = {}, storeSe
   };
 }
 
+/**
+ * Cost of goods is visible to an admin or super admin, or a role with the box checked.
+ *
+ * A missing login cache is false, so an empty session does not show cost.
+ *
+ * @returns {boolean} True when cost, margin, and stock value may be shown.
+ */
+export function userMaySeeProductCost() {
+  let user = null;
+  let profile = null;
+  let permissions = [];
+  try {
+    user = JSON.parse(localStorage.getItem('user') || 'null');
+    profile = JSON.parse(localStorage.getItem('profile') || 'null');
+    permissions = JSON.parse(localStorage.getItem('permissions') || '[]');
+  } catch (err) {
+    return false;
+  }
+  if (user?.is_superuser || profile?.is_super_admin) return true;
+  const role = String(profile?.role || '');
+  if (role === 'admin' || role === 'super_admin') return true;
+  const name = String(profile?.custom_role?.name || '');
+  if (name === 'Super Admin' || name === 'Admin' || name === 'Administrator') return true;
+  return (Array.isArray(permissions) ? permissions : []).some(
+    (row) =>
+      (row?.module === 'products' && row?.action === 'view_cost')
+      || (row?.module === 'reports' && row?.action === 'profit')
+  );
+}
+
 export function userMayEditAnyProductFinancialFieldFromStorage(
   persona,
   productSettings,
@@ -111,7 +141,9 @@ export function resolveProductDetailVisibility(
 ) {
   const showStatus = showProductStatus(productModuleSettings, storeSettings);
   const showPricing = Boolean(fieldAccess?.pricing);
-  const showCost = Boolean(fieldAccess?.cost) && showProductCostPrice(productModuleSettings);
+  const showCost = (
+    Boolean(fieldAccess?.cost) || userMaySeeProductCost()
+  ) && showProductCostPrice(productModuleSettings);
   const showMrp = showPricing && showProductMrp(productModuleSettings);
   const showStock = Boolean(fieldAccess?.stock);
   const showProfit = showPricing && showCost;

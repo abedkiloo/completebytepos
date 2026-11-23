@@ -564,6 +564,12 @@ class SaleListItemSerializer(serializers.ModelSerializer):
     def get_refundable_quantity(self, obj):
         return max(0, obj.quantity - self.get_quantity_refunded(obj))
 
+    def to_representation(self, instance):
+        from products.cost_access import redact_cost_fields
+
+        data = super().to_representation(instance)
+        return redact_cost_fields(data, request=self.context.get('request'))
+
 
 class SaleItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
@@ -613,10 +619,12 @@ class SaleItemSerializer(serializers.ModelSerializer):
         return rows
 
     def to_representation(self, instance):
+        from products.cost_access import redact_cost_fields
+
         data = super().to_representation(instance)
         data['product_id'] = instance.product_id
         data['variant_id'] = instance.variant_id
-        return data
+        return redact_cost_fields(data, request=self.context.get('request'))
 
 
 class SaleRefundItemSerializer(serializers.ModelSerializer):

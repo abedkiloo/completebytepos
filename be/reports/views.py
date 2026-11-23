@@ -134,12 +134,17 @@ def gated_report_action(action_name):
                 )
             response = view_method(self, request, *args, **kwargs)
             if isinstance(response, Response) and isinstance(response.data, dict):
+                from products.cost_access import user_may_see_cost
                 from reports.export_product_cost import should_preserve_product_cost_on_export
 
-                preserve_cost = should_preserve_product_cost_on_export(request)
+                may_see_cost = user_may_see_cost(request.user)
+                preserve_cost = (
+                    should_preserve_product_cost_on_export(request) and may_see_cost
+                )
                 response.data = apply_report_response_flags(
                     response.data,
                     preserve_cost=preserve_cost,
+                    viewer_may_see_cost=may_see_cost,
                 )
                 if action_name == 'trading_profit':
                     from reports.cogs_export import maybe_export_cogs_workbook

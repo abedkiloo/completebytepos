@@ -1,5 +1,6 @@
 import { isModuleFlagEnabled } from './moduleSettingsCache';
 import { isModuleFeatureEnabled } from './moduleFeatures';
+import { userMaySeeProductCost } from './productAccess';
 
 export function reportsEnableDashboardSummary(settings) {
   return isModuleFlagEnabled(settings, 'enable_dashboard_summary', true);
@@ -58,7 +59,9 @@ export function userMayViewDashboardRevenue(permissions = []) {
 
 /** Estimated profit on the home dashboard (reports.view + store toggle). */
 export function userMayViewDashboardProfit(permissions = [], settings = {}) {
-  return userMayViewDashboardRevenue(permissions) && reportsShowCostAndProfit(settings);
+  return userMayViewDashboardRevenue(permissions)
+    && reportsShowCostAndProfit(settings)
+    && userMaySeeProductCost();
 }
 
 export function reportsShowLegacyCatalog(settings) {

@@ -9,6 +9,7 @@ import {
   YAxis,
 } from 'recharts';
 import { reportsAPI } from '../../services/api';
+import { userMaySeeProductCost } from '../../utils/productAccess';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import {
   reportsLegacyReportEnabled,
@@ -49,7 +50,7 @@ const Reports = () => {
   const { settings: reportSettings } = useModuleSettings('reports');
   const showDiscount = reportsShowDiscount(reportSettings);
   const showTax = reportsShowTax(reportSettings);
-  const showCostProfit = reportsShowCostAndProfit(reportSettings);
+  const showCostProfit = reportsShowCostAndProfit(reportSettings) && userMaySeeProductCost();
   
   // All hooks must be called at the top level, before any conditional returns
   const [loading, setLoading] = useState(false);

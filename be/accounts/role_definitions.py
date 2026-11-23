@@ -24,6 +24,11 @@ LEGACY_ROLE_NAMES = ('Admin', 'Administrator', 'Cashier')
 # (PERMISSION_MODULE_ROUTES) and be/accounts/tests/test_permission_matrix.py.
 PERMISSIONS_DATA = [
     ('products', 'view', 'View products'),
+    (
+        'products',
+        'view_cost',
+        'See cost of goods, margin, and stock value',
+    ),
     ('products', 'create', 'Create products'),
     ('products', 'update', 'Update products'),
     ('products', 'delete', 'Delete products'),
@@ -347,6 +352,8 @@ def _manager_queryset():
         .exclude(module='accounting', action='correct')
         # Trading profit report stays admin unless explicitly checked on the role.
         .exclude(module='reports', action='profit')
+        # Cost of goods stays admin unless this box is checked on the role.
+        .exclude(module='products', action='view_cost')
         # Editing expenses (incl. approved) stays admin unless explicitly checked.
         .exclude(module='expenses', action='update')
         # Correcting posted debt collections stays admin unless explicitly checked.
