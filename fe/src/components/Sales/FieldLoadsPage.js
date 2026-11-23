@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 
 import { customersAPI, fieldLoadsAPI, productsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { displayStatus, loadBuckets, loadMatchesFilter, missingUnits, saleBasketTotal, shortageUnits, statusLabel } from '../../utils/fieldLoad';
+import { displayStatus, loadMatchesFilter, missingUnits, saleBasketTotal, shortageUnits, statusLabel } from '../../utils/fieldLoad';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -16,13 +16,6 @@ const FILTERS = [
   { id: 'awaiting', label: 'Awaiting approval', empty: 'Nothing is waiting for approval.' },
   { id: 'shortage', label: 'Shortage', empty: 'No shortages to review.' },
   { id: 'accepted', label: 'Accepted', empty: 'No accepted loads.' },
-];
-
-const TILES = [
-  { id: 'open', label: 'Active loads', bucket: 'active' },
-  { id: 'awaiting', label: 'Awaiting approval', bucket: 'awaitingApproval' },
-  { id: 'shortage', label: 'Shortage flagged', bucket: 'shortage' },
-  { id: 'accepted', label: 'Accepted', bucket: 'accepted' },
 ];
 
 /**
@@ -62,7 +55,6 @@ export default function FieldLoadsPage() {
   }, [load, loadsOn]);
 
   const results = book.results || [];
-  const buckets = useMemo(() => loadBuckets(results), [results]);
   const visible = results.filter((row) => loadMatchesFilter(row, filter));
   const selected = results.find((row) => row.id === selectedId) || null;
   const activeFilter = FILTERS.find((item) => item.id === filter) || FILTERS[0];
@@ -109,29 +101,10 @@ export default function FieldLoadsPage() {
       <PageHeader
         eyebrow="Sales"
         title="Field operations"
-        description="Shop stock leaves when a load is issued. A field-load sale uses that carried stock and is separate from a field order. The shop counts what comes back."
+        description="Sell from stock already on a load. The shop counts what comes back."
       />
-      <section className="rounded-xl bg-primary p-4 text-primary-foreground">
-        <p className="text-xs uppercase tracking-wide text-primary-foreground/80">Omuwenga</p>
-        <div className="flex items-end justify-between gap-3">
-          <h2 className="text-xl font-semibold">Field operations</h2>
-          <span className="rounded-full bg-success px-2 py-0.5 text-xs text-success-foreground">Live</span>
-        </div>
-        <p className="text-sm text-primary-foreground/80">{formatDate(new Date())}</p>
-      </section>
       {view === 'list' && (
         <>
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-            {TILES.map((tile) => (
-              <Tile
-                key={tile.id}
-                label={tile.label}
-                value={buckets[tile.bucket]}
-                pressed={filter === tile.id}
-                onClick={() => showList(tile.id)}
-              />
-            ))}
-          </div>
           <div className="flex flex-wrap gap-2">
             {FILTERS.map((item) => (
               <button
@@ -199,30 +172,6 @@ export default function FieldLoadsPage() {
         />
       )}
     </PageShell>
-  );
-}
-
-/**
- * One operations number. Choosing it opens that tab.
- *
- * @param {object} props
- * @param {string} props.label Tile name.
- * @param {number} props.value Count, 0–100 for the loaded page.
- * @param {boolean} props.pressed True when this tab is open.
- * @param {Function} props.onClick Opens the matching list.
- * @returns {JSX.Element}
- */
-function Tile({ label, value, pressed, onClick }) {
-  return (
-    <button
-      type="button"
-      aria-pressed={pressed}
-      onClick={onClick}
-      className={`rounded-xl border bg-card p-3 text-left ${pressed ? 'border-primary ring-2 ring-primary' : 'border-border'}`}
-    >
-      <p className="text-2xl font-semibold text-primary">{value}</p>
-      <p className="text-sm text-muted-foreground">{label}</p>
-    </button>
   );
 }
 
@@ -568,45 +517,6 @@ function IssueForm({ onCreated, onBack }) {
 }
 
 /**
- * One product card on a load.
- *
- * @param {object} props.item Serialized load line.
- * @param {boolean} props.selected Whether this is the product being sold.
- * @param {Function|null} props.onChoose Called with the line when it can be sold.
- * @returns {JSX.Element} The card. A chooser is a button. A static card is a div.
- */
-function StockCard({ item, selected, onChoose }) {
-  const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
-  const width = item.quantity_taken ? Math.min(100, Math.round((available / item.quantity_taken) * 100)) : 0;
-  const className = `w-full rounded-xl border p-3 text-left text-sm ${selected ? 'border-primary ring-2 ring-primary' : 'border-border'}`;
-  const body = (
-    <>
-      <div className="flex items-start justify-between gap-2">
-        <p className="font-medium">{item.product_name}</p>
-        <p className="text-muted-foreground">Sold {item.quantity_sold}</p>
-      </div>
-      <p className="text-muted-foreground">Taken {item.quantity_taken}</p>
-      <p className="font-medium text-success">Available: {available}</p>
-      {item.unit_price && <p className="text-right text-muted-foreground">{formatCurrency(item.unit_price)}/unit</p>}
-      <div className="mt-2 h-1.5 rounded-full bg-secondary">
-        <div className="h-1.5 rounded-full bg-success" style={{ width: `${width}%` }} />
-      </div>
-      {onChoose && (
-        <span className="mt-3 inline-block rounded-md bg-success px-3 py-1 text-sm font-medium text-success-foreground">
-          Sell
-        </span>
-      )}
-    </>
-  );
-  if (!onChoose) return <div className={className}>{body}</div>;
-  return (
-    <button type="button" className={className} aria-pressed={selected} onClick={() => onChoose(item)}>
-      {body}
-    </button>
-  );
-}
-
-/**
  * A sent-back load, for the person who wrote it to correct and send again.
  *
  * Someone else sees the products and the manager's note, and cannot change them.
@@ -814,11 +724,12 @@ function ReviseSentLoad({ load, onChange, onBack }) {
 }
 
 /**
- * One load: the bag of stock, one sale of many products, then the count.
+ * One load: the products on the left, the sale on the right.
  *
  * Each product that is still on the load has its own quantity. Blank means
- * that product is not in this sale. One payment covers every quantity. The
- * return count is the whole bag and stays a separate step.
+ * that product is not in this sale. One payment covers every quantity and
+ * stays beside the list on a wide screen. A narrow screen puts that short
+ * sale panel on top of the products. The return count is a separate step.
  *
  * @param {object} props.load Serialized load.
  * @param {boolean} props.canApprove Whether this user may accept the count.
@@ -871,6 +782,21 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
   const sold = load.units_sold ?? load.lines.reduce((sum, item) => sum + Number(item.quantity_sold || 0), 0);
 
   /**
+   * Set how many of one product go on this sale.
+   *
+   * @param {number|string} lineId Load line id.
+   * @param {number} next Whole units, 0 through what is still available.
+   *   Zero clears the field.
+   * @returns {void}
+   */
+  const setLineQty = (lineId, next) => {
+    setSaleQtys((prev) => ({
+      ...prev,
+      [lineId]: next > 0 ? String(next) : '',
+    }));
+  };
+
+  /**
    * Run one load action and replace the open load with the response.
    *
    * @param {Function} work Returns the API promise.
@@ -893,27 +819,20 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
   };
 
   return (
-    <section className="space-y-4 rounded-xl border border-border bg-card p-4" data-testid="field-load-detail">
-      <Button type="button" variant="ghost" onClick={onBack}>Back to loads</Button>
-      <div className="rounded-xl bg-primary p-4 text-primary-foreground">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs uppercase tracking-wide text-primary-foreground/80">Current field load</p>
-          <StatusBadge status={shown} />
+    <section className="space-y-4" data-testid="field-load-detail">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <Button type="button" variant="ghost" className="-ml-2 h-8 px-2" onClick={onBack}>
+            Back to loads
+          </Button>
+          <h2 className="truncate text-lg font-semibold">{load.reference || `Load ${load.id}`}</h2>
+          <p className="text-sm text-muted-foreground">
+            {load.agent_name}
+            {load.issued_at ? ` · ${formatDate(load.issued_at)}` : ''}
+            {` · Taken ${taken} · Sold ${sold}`}
+          </p>
         </div>
-        <h2 className="text-xl font-semibold">{load.reference || `Load ${load.id}`}</h2>
-        <p className="text-sm text-primary-foreground/80">
-          {load.agent_name}{load.issued_at ? ` · Issued ${formatDate(load.issued_at)}` : ''}
-        </p>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div>
-            <p className="text-2xl font-semibold">{taken}</p>
-            <p className="text-xs text-primary-foreground/80">Units taken</p>
-          </div>
-          <div>
-            <p className="text-2xl font-semibold">{sold}</p>
-            <p className="text-xs text-primary-foreground/80">Units sold</p>
-          </div>
-        </div>
+        <StatusBadge status={shown} />
       </div>
 
       {load.status === 'awaiting_issue' && (
@@ -966,39 +885,82 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
       )}
 
       {load.status === 'open' && !counting && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold">Sell from this load</h3>
-          <p className="text-sm text-muted-foreground">
-            Enter a quantity for every product in this sale. Leave the others blank. These pieces are already on the load.
-          </p>
-          {saleRows.map((row) => (
-            <div key={row.item.id} className="space-y-2">
-              <StockCard item={row.item} selected={row.quantity > 0} />
-              {row.available > 0 ? (
-                <label className="block text-sm">
-                  <span className="mb-1 block text-muted-foreground">Quantity of {row.item.product_name}</span>
-                  <Input
-                    aria-label={`Quantity of ${row.item.product_name}`}
-                    type="number"
-                    min={0}
-                    max={row.available}
-                    value={saleQtys[row.item.id] ?? ''}
-                    onChange={(event) => setSaleQtys((prev) => ({
-                      ...prev,
-                      [row.item.id]: event.target.value,
-                    }))}
-                  />
-                </label>
-              ) : null}
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="order-2 space-y-2 lg:order-1">
+            <h3 className="text-sm font-semibold">Sell from this load</h3>
+            <p className="text-sm text-muted-foreground">
+              Enter a quantity for every product in this sale. Leave the others blank. These pieces are already on the load.
+            </p>
+            {saleRows.map((row) => (
+              <div
+                key={row.item.id}
+                className={`flex items-center gap-3 rounded-lg border bg-card px-3 py-2 ${row.quantity > 0 ? 'border-primary' : 'border-border'}`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{row.item.product_name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {row.available} left
+                    {row.item.unit_price ? ` · ${formatCurrency(row.item.unit_price)}` : ''}
+                  </p>
+                </div>
+                {row.available > 0 ? (
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 w-9 px-0"
+                      aria-label={`Less ${row.item.product_name}`}
+                      onClick={() => setLineQty(row.item.id, row.quantity - 1)}
+                    >
+                      −
+                    </Button>
+                    <Input
+                      aria-label={`Quantity of ${row.item.product_name}`}
+                      className="h-9 w-14 px-1 text-center"
+                      inputMode="numeric"
+                      value={saleQtys[row.item.id] ?? ''}
+                      onChange={(event) => setSaleQtys((prev) => ({
+                        ...prev,
+                        [row.item.id]: event.target.value,
+                      }))}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-9 w-9 px-0"
+                      aria-label={`More ${row.item.product_name}`}
+                      disabled={row.quantity >= row.available}
+                      onClick={() => setLineQty(row.item.id, row.quantity + 1)}
+                    >
+                      +
+                    </Button>
+                  </div>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Sold out</span>
+                )}
+              </div>
+            ))}
+            <Button type="button" variant="ghost" className="h-8 px-2" onClick={() => setCounting(true)}>
+              Return to shop
+            </Button>
+          </div>
+        <div className="order-1 space-y-3 rounded-lg border border-border bg-card p-3 lg:sticky lg:top-4 lg:order-2">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Sale total</p>
+              <p className="text-2xl font-semibold tabular-nums">{formatCurrency(total)}</p>
             </div>
-          ))}
-        <div className="space-y-3 rounded-xl border border-border p-3">
-          <h3 className="text-base font-semibold">One sale</h3>
-          <p className="text-sm text-muted-foreground">
-            This sells stock already on the load. It does not create a field order and it does not take the units off the shelf again.
+            <p className="text-right text-xs text-muted-foreground">
+              {chosen.length === 0 ? 'No products yet' : `${chosen.length} in this sale`}
+            </p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            This does not create a field order and it does not take the units off the shelf again.
           </p>
           <label className="block text-sm">
-            <span className="mb-1 block text-muted-foreground">Customer</span>
+            <span className="mb-1 block text-xs text-muted-foreground">Customer</span>
             <select
               className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
               aria-label="Customer"
@@ -1011,20 +973,19 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
               ))}
             </select>
           </label>
-          <div>
-            <p className="text-xs uppercase text-muted-foreground">Sale total</p>
-            <p className="text-xl font-semibold">{formatCurrency(total)}</p>
-          </div>
-          <fieldset className="space-y-1 text-sm">
-            <legend className="mb-1 text-muted-foreground">Payment</legend>
+          <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Payment">
             {[
               ['cash', 'Cash'],
               ['mpesa', 'M-Pesa'],
               ['credit', 'Credit'],
             ].map(([value, label]) => (
-              <label key={value} className="flex items-center gap-2">
+              <label
+                key={value}
+                className={`flex h-9 cursor-pointer items-center justify-center rounded-md text-sm ${payment === value ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
+              >
                 <input
                   type="radio"
+                  className="sr-only"
                   name="field-load-payment"
                   value={value}
                   checked={payment === value}
@@ -1033,9 +994,9 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
                 {label}
               </label>
             ))}
-          </fieldset>
+          </div>
           <label className="block text-sm">
-            <span className="mb-1 block text-muted-foreground">Amount received</span>
+            <span className="mb-1 block text-xs text-muted-foreground">Amount received</span>
             <Input
               aria-label="Amount received"
               value={payment === 'credit' ? '0' : paid}
@@ -1044,7 +1005,7 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
             />
           </label>
           <label className="block text-sm">
-            <span className="mb-1 block text-muted-foreground">Sale notes</span>
+            <span className="mb-1 block text-xs text-muted-foreground">Note</span>
             <Input aria-label="Sale notes" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} />
           </label>
           <Button
@@ -1071,12 +1032,6 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
           </Button>
         </div>
         </div>
-      )}
-
-      {load.status === 'open' && !counting && (
-        <Button type="button" variant="outline" onClick={() => setCounting(true)}>
-          Return to shop
-        </Button>
       )}
 
       {load.status === 'open' && counting && (
