@@ -256,6 +256,31 @@ class ExpenseTransferPermissionsTestCase(SalesAPITestCase):
             defaults={'description': 'expenses', 'is_enabled': True},
         )
 
-    def test_sales_cannot_list_expenses(self):
-        response = self.client.get('/api/expenses/')
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+    def test_sales_list_shows_only_rows_they_raised(self):
+        """A sales person opens Expenses for a claim, and only their own rows."""
+        other = User.objects.create_user('expense_other_shop', password='x')
+        Expense.objects.create(
+            description='Shop power',
+            amount=Decimal('80.00'),
+            expense_date=timezone.now().date(),
+            status='approved',
+            created_by=other,
+            notes='0711666009',
+        )
+        own = Expense.objects.create(
+            description='My fare',
+            amount=Decimal('15.00'),
+            expense_date=timezone.now().date(),
+            status='pending',
+            is_claim=True,
+            created_by=self.sales_user,
+        )
+        response = self.client.get('/api/expenses/?page_size=50')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        rows = response.data.get('results', response.data)
+        descriptions = [row['description'] for row in rows]
+        self.assertIn('My fare', descriptions)
+        self.assertNotIn('Shop power', descriptions)
+        self.assertNotIn('0711666009', str(response.data))
+        hidden = self.client.get(f'/api/expenses/{own.id}/')
+        self.assertEqual(hidden.status_code, status.HTTP_200_OK)

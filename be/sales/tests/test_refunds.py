@@ -383,6 +383,37 @@ class SaleRefundAPITests(ManagerAPITestCase):
             format='json',
         )
         self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('0711666009', str(resp.data))
+        self.sale.refresh_from_db()
+        self.assertEqual(self.sale.status, 'completed')
+
+    def test_sales_agent_cannot_void_even_with_an_admin_role_flag(self):
+        """The sales job blocks void before the admin override."""
+        from accounts.models import Permission
+
+        agent = User.objects.create_user('sales_admin_flag', password='x')
+        sales_role = Role.objects.get(name=ROLE_SALES)
+        sales_role.permissions.add(
+            Permission.objects.get(module='sales', action='refund')
+        )
+        UserProfile.objects.create(
+            user=agent,
+            role='admin',
+            custom_role=sales_role,
+            is_active=True,
+        )
+        client = self.client.__class__()
+        token = RefreshToken.for_user(agent)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        resp = client.post(
+            f'/api/sales/{self.sale.id}/refund/',
+            {'reason': '0711666009', 'full': True},
+            format='json',
+        )
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn('0711666009', str(resp.data))
+        self.sale.refresh_from_db()
+        self.assertEqual(self.sale.refund_status, 'none')
 
 
 class SaleRefundAuditEventTests(TestCase):

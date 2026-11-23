@@ -738,6 +738,13 @@ def sync_default_roles(created_by=None):
                 action__in=['view', 'create', 'update'],
             )
         )
+    # A sales person does not void a sale, even if that box was checked earlier.
+    sales.permissions.remove(
+        *Permission.objects.filter(
+            module='sales',
+            action__in=['refund', 'unvoid', 'rollback'],
+        )
+    )
 
     field_agent, _agent_created = Role.objects.update_or_create(
         name=ROLE_FIELD_AGENT,

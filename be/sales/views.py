@@ -193,6 +193,37 @@ PAYMENTS_PERMS = RequirePermPerAction('invoicing', {
     # Payments are immutable financial events - no update or destroy.
 })
 
+_SALES_AGENT_ROLES = frozenset({'Sales Personnel', 'Field Sales'})
+_SALES_AGENT_LEGACY = frozenset({'sales', 'field_sales', 'field_agent'})
+
+
+def _sales_agent_cannot_void(user) -> bool:
+    """
+    Whether this job is a sales person who must not void a sale.
+
+    Args:
+        user: Request user. Anonymous, or a user with no profile, returns
+            False so the admin check still applies. The custom role name
+            is 0–150 characters.
+
+    Returns:
+        bool: True for Sales Personnel and Field Sales. No writes.
+
+    Raises:
+        None.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    profile = getattr(user, 'profile', None)
+    if profile is None:
+        return False
+    custom = getattr(profile, 'custom_role', None)
+    name = (getattr(custom, 'name', '') or '').strip() if custom is not None else ''
+    if name in _SALES_AGENT_ROLES:
+        return True
+    legacy = (getattr(profile, 'role', '') or '').strip()
+    return legacy in _SALES_AGENT_LEGACY
+
 
 class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Sale.objects.all().select_related('cashier', 'served_by').prefetch_related(
@@ -1306,9 +1337,33 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def refund(self, request, pk=None):
-        """Void/refund a completed sale. Admin / Super Admin only."""
+        """
+        Void or refund a completed sale.
+
+        A Sales Personnel or Field Sales user cannot do this, even when
+        their role still lists the permission. Everyone else must be an
+        admin or super admin. Stock, money, and the receipt change only
+        after that check passes.
+
+        Args:
+            request: Reason 1–500 characters, plus a full flag or line
+                quantities. A sales agent is refused before those are read.
+            pk: Sale id, 1–2_147_483_647.
+
+        Returns:
+            Response 201 with the refund, or 403 when this person cannot
+            void. The sale is unchanged on 403.
+
+        Raises:
+            ValidationError: The sale cannot be refunded.
+        """
         from approvals.permissions import user_has_admin_checker_override
 
+        if _sales_agent_cannot_void(request.user):
+            return Response(
+                {'error': 'A sales person cannot void a sale.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if not user_has_admin_checker_override(request.user):
             return Response(
                 {

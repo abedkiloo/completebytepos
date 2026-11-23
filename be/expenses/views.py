@@ -15,7 +15,7 @@ from .serializers import (
 from .services import ExpenseCategoryService, ExpenseService
 from utils.list_ordering import NameSavedOrderingFilter
 from accounts.permissions import RequireModuleEnabled, RequirePerm, RequirePermPerAction, IsSuperAdmin
-from expenses.claims import decide_claim as decide_expense_claim, file_claim, may_decide_claim
+from expenses.claims import decide_claim as decide_expense_claim, file_claim
 from settings.feature_permissions import RequireModuleFeature
 from utils.audit_events import log_approval_event
 from utils.audit_helpers import audited_perform_create, audited_perform_update
@@ -50,12 +50,55 @@ def _user_has_expenses_perm(user, action: str) -> bool:
     return bool(profile and profile.has_permission('expenses', action))
 
 
+_FULL_EXPENSE_ROLES = frozenset({'Super Admin', 'Admin', 'Administrator'})
+
+
+def expense_list_scope(user) -> str:
+    """
+    Decide which expense rows this person may list.
+
+    Args:
+        user: Authenticated user, or None. A missing profile is treated as
+            someone who sees only rows they raised.
+
+    Returns:
+        str: ``all`` for an admin or super admin (the whole book, including
+        other people's shop expenses). ``claims`` for a manager, or anyone
+        who may decide claims (rows they raised, plus every employee claim).
+        ``own`` for everyone else (only rows they raised). Exactly one of
+        those three words. No writes.
+
+    Raises:
+        None.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return 'own'
+    if getattr(user, 'is_superuser', False):
+        return 'all'
+    profile = getattr(user, 'profile', None)
+    if profile is None:
+        return 'own'
+    legacy = (getattr(profile, 'role', '') or '').strip()
+    if legacy in ('admin', 'super_admin'):
+        return 'all'
+    custom = getattr(profile, 'custom_role', None)
+    name = (getattr(custom, 'name', '') or '').strip() if custom is not None else ''
+    if name in _FULL_EXPENSE_ROLES:
+        return 'all'
+    if legacy == 'manager' or name == 'Manager':
+        return 'claims'
+    if _user_has_expenses_perm(user, 'claim_approve'):
+        return 'claims'
+    return 'own'
+
+
 class CanReadExpenses(permissions.BasePermission):
     """
     Open the expenses list.
 
-    ``expenses.view`` sees the shop book. ``expenses.claim`` sees only the
-    signed-in person's own claims. The queryset applies that limit.
+    ``expenses.view`` or ``expenses.claim`` may open the list. The queryset
+    then limits it: an admin sees the shop book, a manager sees their own
+    rows plus employee claims, and everyone else sees only rows they raised.
     """
 
     message = 'You do not have permission to view expenses.'
@@ -252,9 +295,9 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """
         Expenses this person may see.
 
-        ``expenses.view`` sees the shop book. A claimant without that
-        permission sees their own claims. Someone who can decide claims
-        also sees up to 100 pending claims they are allowed to decide.
+        An admin or super admin sees the shop book. A manager sees rows
+        they raised plus every employee claim. Everyone else sees only
+        rows they raised. Filters still apply inside that set.
         """
         filters = {}
         query_params = self.request.query_params
@@ -277,18 +320,12 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         
         queryset = self.expense_service.build_queryset(filters, request=self.request)
         user = self.request.user
-        if _user_has_expenses_perm(user, 'view'):
+        scope = expense_list_scope(user)
+        if scope == 'all':
             return queryset
-        own_ids = queryset.filter(is_claim=True, created_by=user).values('pk')
-        waiting_ids = []
-        if _user_has_expenses_perm(user, 'claim_approve'):
-            waiting = (
-                queryset.filter(is_claim=True, status='pending')
-                .exclude(created_by=user)
-                .select_related('created_by', 'created_by__profile', 'created_by__profile__custom_role')[:100]
-            )
-            waiting_ids = [row.pk for row in waiting if may_decide_claim(user, row)]
-        return queryset.filter(Q(pk__in=own_ids) | Q(pk__in=waiting_ids or [0]))
+        if scope == 'claims':
+            return queryset.filter(Q(created_by=user) | Q(is_claim=True))
+        return queryset.filter(created_by=user)
 
     def perform_create(self, serializer):
         branch = None
@@ -494,11 +531,35 @@ class ExpenseViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         current_branch = get_current_branch(request)
         date_from = request.query_params.get('date_from') or None
         date_to = request.query_params.get('date_to') or None
-        legacy = self.expense_service.get_expense_statistics(
-            branch=current_branch,
-            date_from=date_from,
-            date_to=date_to,
-        )
+        if expense_list_scope(request.user) == 'all':
+            legacy = self.expense_service.get_expense_statistics(
+                branch=current_branch,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        else:
+            # Totals stay inside the same rows the list shows.
+            approved = qs.filter(status='approved')
+            today = timezone.localdate()
+            month_start = today.replace(day=1)
+            legacy = {
+                'total_expenses': float(
+                    approved.aggregate(total=Sum('amount'))['total'] or 0
+                ),
+                'month_expenses': float(
+                    approved.filter(expense_date__gte=month_start).aggregate(
+                        total=Sum('amount')
+                    )['total'] or 0
+                ),
+                'by_category': list(
+                    approved.values('category__name').annotate(
+                        total=Sum('amount'), count=Count('id'),
+                    )
+                ),
+                'by_status': list(
+                    qs.values('status').annotate(total=Sum('amount'), count=Count('id'))
+                ),
+            }
 
         return Response(
             {

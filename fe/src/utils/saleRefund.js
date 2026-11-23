@@ -2,10 +2,25 @@
  * Sale refund helpers — permissions and payload building.
  */
 
-import { hasPermission } from './roleAccess';
+import { hasPermission, getStoredAuth, isSalesPersonnelProfile, isFieldSalesFromStorage } from './roleAccess';
 
-/** Void/refund: Admin/Super Admin only. */
+/**
+ * Sales Personnel and Field Sales never void a sale from this screen.
+ *
+ * A missing profile is not treated as a sales agent, so an empty login
+ * cache does not hide the button for an admin.
+ *
+ * @returns {boolean} True when Void / refund must stay hidden.
+ */
+function signedInSalesAgentCannotVoid() {
+  const { profile } = getStoredAuth();
+  if (!profile) return false;
+  return isSalesPersonnelProfile(profile) || isFieldSalesFromStorage();
+}
+
+/** Void/refund: Admin/Super Admin, never a sales agent. */
 export function userCanRefundSales(permissions, { isAdmin = false } = {}) {
+  if (signedInSalesAgentCannotVoid()) return false;
   if (isAdmin) return true;
   return hasPermission(permissions, 'sales', 'refund');
 }

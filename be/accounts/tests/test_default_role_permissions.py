@@ -84,6 +84,15 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.manager_role, 'sales', 'approve'))
         self.assertTrue(self._has(self.super_role, 'sales', 'approve'))
 
+    def test_sales_void_is_removed_even_if_it_was_checked(self):
+        refund = Permission.objects.get(module='sales', action='refund')
+        self.sales_role.permissions.add(refund)
+        self.assertTrue(self._has(self.sales_role, 'sales', 'refund'))
+        sync_default_roles()
+        self.sales_role.refresh_from_db()
+        self.assertFalse(self._has(self.sales_role, 'sales', 'refund'))
+        self.assertFalse(self._has(self.field_role, 'sales', 'refund'))
+
     def test_manager_lacks_void_rollback_and_unvoid(self):
         self.assertFalse(self._has(self.manager_role, 'sales', 'refund'))
         self.assertFalse(self._has(self.manager_role, 'sales', 'rollback'))

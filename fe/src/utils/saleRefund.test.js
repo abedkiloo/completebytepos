@@ -23,6 +23,20 @@ describe('saleRefund', () => {
     expect(userCanRefundSales([])).toBe(false);
   });
 
+  it('hides void for a sales agent even when the permission is checked', () => {
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'cashier', custom_role: { name: 'Sales Personnel' } })
+    );
+    expect(userCanRefundSales(refundPerm, { isAdmin: true })).toBe(false);
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'field_sales', custom_role: { name: 'Field Sales' } })
+    );
+    expect(userCanRefundSales(refundPerm)).toBe(false);
+    localStorage.removeItem('profile');
+  });
+
   it('checks unvoid permission (grantable) or admin override', () => {
     const unvoidPerm = [{ module: 'sales', action: 'unvoid', name: 'sales.unvoid' }];
     expect(userCanUnvoidSales(approvePerm)).toBe(false);
