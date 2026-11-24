@@ -102,7 +102,8 @@ const WebsiteEnquiries = () => {
             <thead>
               <tr>
                 <th className="text-left">From</th>
-                <th className="text-left">Fitting</th>
+                <th className="text-left">Items</th>
+                <th className="text-left">Amount</th>
                 <th className="text-left">Message</th>
                 <th className="text-left">Status</th>
                 <th className="text-right">Actions</th>
@@ -124,6 +125,7 @@ const WebsiteEnquiries = () => {
                       <div className="text-xs text-muted-foreground">{row.product_name}</div>
                     ) : null}
                   </td>
+                  <td className="whitespace-nowrap font-medium">{row.quantity || '—'}</td>
                   <td className="max-w-sm whitespace-pre-wrap">{row.message || '—'}</td>
                   <td>
                     <StatusBadge status={row.status} label={STATUS_LABEL[row.status] || row.status} />

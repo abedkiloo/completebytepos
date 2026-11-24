@@ -73,7 +73,10 @@ class BlogAdminApiTest(TestCase):
         public = APIClient()
         public.credentials(HTTP_X_WEBSITE_KEY=WEBSITE_KEY)
         created = public.post('/api/public/website/enquiries/', {
-            'name': 'Amina', 'phone': '0718515142', 'message': '20 m webbing',
+            'name': 'Amina',
+            'phone': '0718515142',
+            'quantity': '20 m',
+            'message': 'Webbing for seats',
         }, format='json')
         self.assertEqual(created.status_code, 201)
         self.assertEqual(public.get('/api/cms/enquiries/').status_code, 401)
@@ -82,14 +85,16 @@ class BlogAdminApiTest(TestCase):
         self.assertEqual(listed.status_code, 200)
         row = listed.data['results'][0]
         self.assertEqual(row['name'], 'Amina')
+        self.assertEqual(row['quantity'], '20 m')
         reviewed = self._client(self.writer).patch(
             f"/api/cms/enquiries/{row['id']}/",
-            {'status': WebsiteEnquiry.STATUS_REVIEWED},
+            {'status': WebsiteEnquiry.STATUS_REVIEWED, 'quantity': 'hacked'},
             format='json',
         )
         self.assertEqual(reviewed.status_code, 200)
         self.assertEqual(reviewed.data['name'], 'Amina')
         self.assertEqual(reviewed.data['status'], 'reviewed')
+        self.assertEqual(reviewed.data['quantity'], '20 m')
 
     def test_anonymous_is_401_and_staff_without_grant_is_403(self):
         self.assertEqual(self._client().get(URL).status_code, 401)

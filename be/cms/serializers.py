@@ -241,20 +241,22 @@ class PublicEnquirySerializer(serializers.ModelSerializer):
     """
     Validate and create a public website enquiry (unauthenticated).
 
-    Requires name (≥ 2 chars), phone (9–15 digits), and either ``message`` or
-    ``interest``. ``product_id`` links an active product when provided.
+    Requires name (≥ 2 chars), phone (9–15 digits), quantity (1–80 chars), and
+    either ``message`` or ``interest`` for the items. ``product_id`` links an
+    active product when provided.
 
     Side effects:
         Inserts ``WebsiteEnquiry`` with ``status=new``; no SMS or audit in serializer.
     """
 
     product_id = serializers.IntegerField(required=False, allow_null=True, write_only=True)
+    quantity = serializers.CharField(required=True, allow_blank=False, max_length=80)
 
     class Meta:
         model = WebsiteEnquiry
         fields = [
             'id', 'name', 'phone', 'business', 'location', 'interest',
-            'message', 'product_id', 'status',
+            'quantity', 'message', 'product_id', 'status',
         ]
         read_only_fields = ['id', 'status']
 
@@ -271,9 +273,17 @@ class PublicEnquirySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Enter a phone number we can call.')
         return raw
 
+    def validate_quantity(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Enter the amount or quantity you need.')
+        if len(value) > 80:
+            raise serializers.ValidationError('Keep the amount under 80 characters.')
+        return value
+
     def validate(self, attrs):
         if not (attrs.get('message') or '').strip() and not (attrs.get('interest') or '').strip():
-            raise serializers.ValidationError('Tell us which fitting you need.')
+            raise serializers.ValidationError('Tell us which items you need.')
         return attrs
 
     def create(self, validated_data):
@@ -292,7 +302,7 @@ class PublicEnquirySerializer(serializers.ModelSerializer):
         product_id = validated_data.pop('product_id', None)
         if product_id:
             validated_data['product'] = Product.objects.filter(pk=product_id, is_active=True).first()
-        for key in ('business', 'location', 'interest', 'message'):
+        for key in ('business', 'location', 'interest', 'quantity', 'message'):
             if key in validated_data and isinstance(validated_data[key], str):
                 validated_data[key] = validated_data[key].strip()
         return WebsiteEnquiry.objects.create(**validated_data)
@@ -305,11 +315,11 @@ class WebsiteEnquiryAdminSerializer(serializers.ModelSerializer):
         model = WebsiteEnquiry
         fields = [
             'id', 'name', 'phone', 'business', 'location', 'interest',
-            'message', 'product', 'product_name', 'status', 'created_at',
+            'quantity', 'message', 'product', 'product_name', 'status', 'created_at',
         ]
         read_only_fields = [
             'id', 'name', 'phone', 'business', 'location', 'interest',
-            'message', 'product', 'product_name', 'created_at',
+            'quantity', 'message', 'product', 'product_name', 'created_at',
         ]
 
     def get_product_name(self, obj):

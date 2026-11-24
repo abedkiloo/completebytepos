@@ -159,6 +159,11 @@ class WebsiteEnquiry(models.Model):
     business = models.CharField(max_length=120, blank=True)
     location = models.CharField(max_length=120, blank=True)
     interest = models.CharField(max_length=200, blank=True)
+    quantity = models.CharField(
+        max_length=80,
+        blank=True,
+        help_text='Amount or quantity the visitor asked for (1–80 characters).',
+    )
     message = models.TextField(blank=True)
     product = models.ForeignKey(
         'products.Product',

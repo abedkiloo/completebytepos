@@ -193,22 +193,44 @@ class PublicCatalogApiTest(TestCase):
             'name': 'Amina',
             'phone': '0718 515 142',
             'interest': 'No. 5 nylon zipper',
-            'message': '20 metres for cushion covers',
+            'quantity': '20 metres',
+            'message': 'For cushion covers',
             'product_id': self.zip.id,
         }, format='json')
         self.assertEqual(res.status_code, 201)
         saved = WebsiteEnquiry.objects.get()
         self.assertEqual(saved.product_id, self.zip.id)
+        self.assertEqual(saved.quantity, '20 metres')
         self.assertEqual(saved.status, WebsiteEnquiry.STATUS_NEW)
         bad = self.client.post('/api/public/website/enquiries/', {
-            'name': 'A', 'phone': '12', 'message': 'x',
+            'name': 'A', 'phone': '12', 'quantity': '1', 'message': 'x',
         }, format='json')
         self.assertEqual(bad.status_code, 400)
         self.assertEqual(WebsiteEnquiry.objects.count(), 1)
 
+    def test_enquiry_requires_quantity_for_follow_up(self):
+        missing = self.client.post('/api/public/website/enquiries/', {
+            'name': 'Amina',
+            'phone': '0718515142',
+            'interest': 'Zippers',
+            'message': 'Need stock',
+        }, format='json')
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(WebsiteEnquiry.objects.count(), 0)
+
+    def test_enquiry_requires_items_for_follow_up(self):
+        missing = self.client.post('/api/public/website/enquiries/', {
+            'name': 'Amina',
+            'phone': '0718515142',
+            'quantity': '10 metres',
+        }, format='json')
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(WebsiteEnquiry.objects.count(), 0)
+
     def test_honeypot_is_not_stored(self):
         res = self.client.post('/api/public/website/enquiries/', {
-            'name': 'Bot', 'phone': '0718000000', 'message': 'buy now',
+            'name': 'Bot', 'phone': '0718000000', 'quantity': '10',
+            'message': 'buy now',
             'company_website': 'https://spam.example',
         }, format='json')
         self.assertEqual(res.status_code, 201)
