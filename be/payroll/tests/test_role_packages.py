@@ -79,6 +79,27 @@ class RolePayPackageTests(SuperAdminAPITestCase):
         slip = run.payslips.get(employee=self.emp)
         self.assertEqual(slip.gross_pay, Decimal('24000.00'))
 
+    def test_employee_can_remove_one_package_amount(self):
+        """Amount 0 on a personal assignment drops that package line for one person."""
+        EmployeePayAssignment.objects.create(
+            employee=self.emp,
+            component=self.transport,
+            amount=Decimal('0.00'),
+            notes='Removed from role package for this employee',
+        )
+        run = create_run(year=2026, month=9, user=self.admin)
+        run = calculate_run(run, user=self.admin)
+        slip = run.payslips.get(employee=self.emp)
+        # Basic 20000 only — transport 2500 removed for this employee.
+        self.assertEqual(slip.gross_pay, Decimal('20000.00'))
+        transport_lines = [
+            line
+            for line in slip.lines.all()
+            if line.component_id == self.transport.id
+        ]
+        self.assertTrue(transport_lines)
+        self.assertEqual(transport_lines[0].amount, Decimal('0.00'))
+
     def test_api_create_package(self):
         RolePayPackage.objects.filter(role=self.sales_role).delete()
         res = self.client.post(

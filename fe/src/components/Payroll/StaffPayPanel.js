@@ -3,6 +3,10 @@ import { Loader2, Plus, Trash2 } from 'lucide-react';
 
 import { employeesAPI, payrollAPI } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
+import {
+  mergeInheritedPayLines,
+  personalPackageOverridePayload,
+} from '../../utils/staffPayLines';
 import { toast } from '../../utils/toast';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -160,14 +164,33 @@ export default function StaffPayPanel({
     loadRolePackage(employee);
   }, [employee, loadRolePackage]);
 
+  const packageComponentIds = useMemo(
+    () =>
+      new Set(
+        (rolePackage?.lines || [])
+          .filter((line) => line?.is_active !== false)
+          .map((line) => Number(line.component)),
+      ),
+    [rolePackage],
+  );
+
   const assignedIds = useMemo(
     () => new Set(assignments.map((a) => a.component)),
     [assignments]
   );
 
   const availableToAdd = useMemo(
-    () => assignableComponents.filter((c) => !assignedIds.has(c.id)),
-    [assignableComponents, assignedIds]
+    () =>
+      assignableComponents.filter(
+        (c) => !assignedIds.has(c.id) && !packageComponentIds.has(Number(c.id)),
+      ),
+    [assignableComponents, assignedIds, packageComponentIds],
+  );
+
+  const extraAssignments = useMemo(
+    () =>
+      assignments.filter((row) => !packageComponentIds.has(Number(row.component))),
+    [assignments, packageComponentIds],
   );
 
   const saveAssignment = async (e) => {
@@ -255,9 +278,99 @@ export default function StaffPayPanel({
     }
   };
 
-  const inheritedLines = useMemo(
-    () => (rolePackage?.lines || []).filter((l) => l.is_active),
-    [rolePackage]
+  const refreshPerson = async () => {
+    await loadAssignments(employeeId);
+    await loadPayPreview(employeeId);
+  };
+
+  const upsertPersonalOverride = async ({
+    componentId,
+    amount,
+    rate = null,
+    notes = '',
+    existingId = null,
+  }) => {
+    const payload = personalPackageOverridePayload({
+      employeeId,
+      componentId,
+      amount,
+      rate,
+      notes,
+    });
+    if (existingId) {
+      await payrollAPI.updateAssignment(existingId, {
+        amount: payload.amount,
+        rate: payload.rate,
+        notes: payload.notes,
+        is_active: true,
+      });
+    } else {
+      await payrollAPI.createAssignment(payload);
+    }
+  };
+
+  const editInheritedAmount = async (row, nextAmount) => {
+    const prev =
+      row.personalAmount != null
+        ? row.personalAmount
+        : row.packageAmount != null
+          ? row.packageAmount
+          : '';
+    if (String(nextAmount) === String(prev)) return;
+    setBusy(true);
+    try {
+      await upsertPersonalOverride({
+        componentId: row.componentId,
+        amount: nextAmount === '' ? '0' : nextAmount,
+        rate: row.personalRate != null ? row.personalRate : row.packageRate,
+        notes: row.override?.notes || 'Personal package amount',
+        existingId: row.override?.id || null,
+      });
+      await refreshPerson();
+      toast.success('Amount updated for this employee only');
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Could not update amount');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeInheritedForPerson = async (row) => {
+    setBusy(true);
+    try {
+      await upsertPersonalOverride({
+        componentId: row.componentId,
+        amount: '0',
+        rate: null,
+        notes: 'Removed from role package for this employee',
+        existingId: row.override?.id || null,
+      });
+      await refreshPerson();
+      toast.success('Removed for this employee — role package unchanged');
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Could not remove amount');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreInheritedForPerson = async (row) => {
+    if (!row.override?.id) return;
+    setBusy(true);
+    try {
+      await payrollAPI.deleteAssignment(row.override.id);
+      await refreshPerson();
+      toast.success('Restored role package amount for this employee');
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Could not restore');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const inheritedRows = useMemo(
+    () => mergeInheritedPayLines(rolePackage, assignments),
+    [rolePackage, assignments],
   );
 
   if (loading) {
@@ -272,9 +385,9 @@ export default function StaffPayPanel({
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground max-w-2xl">
-        If this person has a job role with a package, they already inherit those
-        lines. Add or change amounts / rates here only when this one employee should
-        differ from the role package (e.g. a higher sales commission rate).
+        Role package amounts apply automatically. For one person you can edit an
+        amount, remove a package line, or add an extra component — the role template
+        itself stays the same for everyone else.
       </p>
 
       <div className="max-w-md space-y-2">
@@ -346,35 +459,117 @@ export default function StaffPayPanel({
           </div>
 
           {rolePackage ? (
-            <div className="rounded-md border border-dashed bg-muted/20 p-3 space-y-2">
+            <div className="rounded-md border border-dashed bg-muted/20 p-3 space-y-3">
               <div className="text-sm font-medium">
-                Inherited from {rolePackage.role_name || rolePackage.name} package
+                Package lines for {rolePackage.role_name || rolePackage.name}
+                <span className="ml-2 font-normal text-muted-foreground">
+                  — edit or remove for this person only
+                </span>
               </div>
-              {inheritedLines.length === 0 ? (
+              {inheritedRows.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   Role template exists but has no active lines yet. Set default basic
                   and add allowances under Role templates.
                 </p>
               ) : (
-                <ul className="text-sm space-y-1">
-                  {inheritedLines.map((line) => (
-                    <li key={line.id} className="flex flex-wrap gap-2">
-                      <span>{line.component_name}</span>
-                      <span className="text-muted-foreground">
-                        {line.amount != null
-                          ? formatCurrency(line.amount)
-                          : formatRate(line.rate) || 'template default'}
-                      </span>
-                      <Badge variant="outline" className="text-[10px]">
-                        role
-                      </Badge>
-                    </li>
-                  ))}
-                </ul>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="py-2 pr-2">Component</th>
+                        <th className="py-2 pr-2">Package</th>
+                        <th className="py-2 pr-2">This person (KES)</th>
+                        <th className="py-2 pr-2">Status</th>
+                        <th className="py-2"> </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inheritedRows.map((row) => (
+                        <tr key={row.packageLineId} className="border-b border-border/40">
+                          <td className="py-2 pr-2">
+                            <div className="font-medium">{row.componentName}</div>
+                            <div className="font-mono text-xs text-muted-foreground">
+                              {row.componentCode}
+                            </div>
+                          </td>
+                          <td className="py-2 pr-2 text-muted-foreground">
+                            {row.packageAmount != null
+                              ? formatCurrency(row.packageAmount)
+                              : formatRate(row.packageRate) || '—'}
+                          </td>
+                          <td className="py-2 pr-2">
+                            <Input
+                              className="w-32"
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              defaultValue={
+                                row.removed
+                                  ? '0'
+                                  : row.personalAmount != null
+                                    ? row.personalAmount
+                                    : row.packageAmount ?? ''
+                              }
+                              key={`${row.packageLineId}-${row.status}-${row.effectiveAmount}`}
+                              placeholder="Amount"
+                              onBlur={(ev) => editInheritedAmount(row, ev.target.value)}
+                              disabled={busy}
+                              aria-label={`Amount for ${row.componentName}`}
+                            />
+                          </td>
+                          <td className="py-2 pr-2">
+                            <Badge
+                              variant={
+                                row.status === 'removed'
+                                  ? 'destructive'
+                                  : row.status === 'edited'
+                                    ? 'secondary'
+                                    : 'outline'
+                              }
+                            >
+                              {row.status === 'removed'
+                                ? 'Removed'
+                                : row.status === 'edited'
+                                  ? 'Personal amount'
+                                  : 'Inherited'}
+                            </Badge>
+                          </td>
+                          <td className="py-2">
+                            <div className="flex flex-wrap gap-1 justify-end">
+                              {row.status === 'inherited' ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => removeInheritedForPerson(row)}
+                                  disabled={busy}
+                                  aria-label={`Remove ${row.componentName} for this employee`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  Remove
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => restoreInheritedForPerson(row)}
+                                  disabled={busy}
+                                >
+                                  Restore package
+                                </Button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
               <p className="text-xs text-muted-foreground">
-                Personal lines below override the same component for this employee
-                only. Current gross above already includes role package + overrides.
+                Changing an amount or pressing Remove only affects this employee.
+                Current gross above already reflects those edits.
               </p>
             </div>
           ) : (
@@ -385,7 +580,7 @@ export default function StaffPayPanel({
             </p>
           )}
 
-          <div className="text-sm font-medium">Personal overrides (this employee)</div>
+          <div className="text-sm font-medium">Extra personal lines (not on the package)</div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -400,14 +595,15 @@ export default function StaffPayPanel({
                 </tr>
               </thead>
               <tbody>
-                {assignments.length === 0 ? (
+                {extraAssignments.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-6 text-center text-muted-foreground">
-                      No personal overrides — full role package applies as-is.
+                      No extra lines — use the package table above to change inherited
+                      amounts, or add a component here.
                     </td>
                   </tr>
                 ) : (
-                  assignments.map((row) => {
+                  extraAssignments.map((row) => {
                     const comp = components.find((c) => c.id === row.component);
                     const kindLabel =
                       row.component_code === 'BASIC'
