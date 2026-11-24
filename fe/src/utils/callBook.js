@@ -70,6 +70,49 @@ export function callBookCountLine(summary) {
 }
 
 /**
+ * Day-plan row for one weekday from the book summary.
+ *
+ * @param {object|null|undefined} summary API summary with `days`.
+ * @param {number} weekday Weekday index 0–4 (Monday–Friday).
+ * @returns {{weekday: number, called: number, not_called: number, callable: number}|null}
+ *   Counts for that day, or null when summary/day is missing. Never a phone.
+ */
+export function callDayPlanCounts(summary, weekday) {
+  const index = Number(weekday);
+  if (!summary || Number.isNaN(index) || index < 0 || index > 4) return null;
+  const days = Array.isArray(summary.days) ? summary.days : [];
+  const match = days.find((item) => Number(item?.weekday) === index);
+  if (!match) {
+    return { weekday: index, called: 0, not_called: 0, callable: 0 };
+  }
+  return {
+    weekday: index,
+    called: Math.max(0, Number(match.called) || 0),
+    not_called: Math.max(0, Number(match.not_called) || 0),
+    callable: Math.max(0, Number(match.callable) || 0),
+  };
+}
+
+/**
+ * Live ticker for one day's plan: how many called vs still to call.
+ *
+ * @param {object|null|undefined} day Day counts (`called`, `not_called`, optional `callable`).
+ * @param {object} [options]
+ * @param {boolean} [options.includeCallable=false] Append "of N on plan" when true.
+ * @returns {string} Short ticker. Empty when day is missing. No phone numbers.
+ */
+export function callDayPlanTicker(day, options = {}) {
+  if (!day) return '';
+  const called = Math.max(0, Number(day.called) || 0);
+  const notCalled = Math.max(0, Number(day.not_called) || 0);
+  const includeCallable = Boolean(options.includeCallable);
+  const callable = Math.max(0, Number(day.callable) || 0);
+  const base = `${called} called · ${notCalled} not called`;
+  if (!includeCallable || callable <= 0) return base;
+  return `${base} · ${callable} on plan`;
+}
+
+/**
  * Share of the week already recorded, as a whole percent.
  *
  * @param {number} called Customers with a result this week. 0 or more.

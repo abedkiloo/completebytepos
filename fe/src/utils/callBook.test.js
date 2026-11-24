@@ -1,6 +1,8 @@
 import {
   callBookCountLine,
   callCoveragePercent,
+  callDayPlanCounts,
+  callDayPlanTicker,
   customerCategoryLabel,
   outcomeLabel,
   daySubCountyLabel,
@@ -29,6 +31,59 @@ describe('call book labels', () => {
       cannot_call: 1,
     })).toBe('Called 2 of 5. 1 cannot be called.');
     expect(callBookCountLine(null)).toBe('');
+  });
+
+  test('unit: day plan counts and ticker follow the selected weekday', () => {
+    const summary = {
+      days: [
+        { weekday: 0, callable: 5, called: 2, not_called: 3 },
+        { weekday: 2, callable: 1, called: 0, not_called: 1 },
+      ],
+    };
+    expect(callDayPlanCounts(summary, 0)).toEqual({
+      weekday: 0,
+      called: 2,
+      not_called: 3,
+      callable: 5,
+    });
+    expect(callDayPlanCounts(summary, 1)).toEqual({
+      weekday: 1,
+      called: 0,
+      not_called: 0,
+      callable: 0,
+    });
+    expect(callDayPlanTicker(callDayPlanCounts(summary, 0))).toBe('2 called · 3 not called');
+    expect(callDayPlanTicker(callDayPlanCounts(summary, 0), { includeCallable: true }))
+      .toBe('2 called · 3 not called · 5 on plan');
+  });
+
+  test('corrected: ticker never embeds a phone number', () => {
+    const line = callDayPlanTicker({
+      called: 1,
+      not_called: 4,
+      callable: 5,
+      phone: '0718000999',
+    }, { includeCallable: true });
+    expect(line).toBe('1 called · 4 not called · 5 on plan');
+    expect(line).not.toMatch(/07\d|phone/i);
+  });
+
+  test('security: missing summary or bad weekday yields no ticker text', () => {
+    expect(callDayPlanCounts(null, 0)).toBeNull();
+    expect(callDayPlanCounts({}, 9)).toBeNull();
+    expect(callDayPlanTicker(null)).toBe('');
+  });
+
+  test('stress: day ticker stays stable across many day rows', () => {
+    const days = Array.from({ length: 300 }, (_, i) => ({
+      weekday: i % 5,
+      callable: i + 1,
+      called: i,
+      not_called: 1,
+    }));
+    for (let i = 0; i < 300; i += 1) {
+      expect(callDayPlanTicker(days[i])).toBe(`${i} called · 1 not called`);
+    }
   });
 
   test('a day header names its sub-counties once', () => {

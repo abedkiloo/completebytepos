@@ -121,6 +121,18 @@ describe('CallBookPage', () => {
     });
   });
 
+  test('corrected: day plan ticker shows called vs not called for the selected day', async () => {
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    expect(screen.getByTestId('call-day-ticker')).toBeInTheDocument();
+    expect(screen.getByTestId('call-day-ticker-called')).toHaveTextContent('1 called');
+    expect(screen.getByTestId('call-day-ticker-not-called')).toHaveTextContent('1 not called');
+    expect(screen.getByTestId('call-workspace-day-ticker')).toHaveTextContent(
+      '1 called · 1 not called · 2 on plan',
+    );
+    expect(screen.getByTestId('call-day-ticker').textContent).not.toMatch(/0718/);
+  });
+
   test('records call later with the note', async () => {
     render(<CallBookPage />);
     await screen.findByText('Not Called Shop');

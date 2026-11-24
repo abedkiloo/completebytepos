@@ -10,6 +10,8 @@ import {
   CALL_OUTCOMES,
   WEEKDAY_LABELS,
   callCoveragePercent,
+  callDayPlanCounts,
+  callDayPlanTicker,
   customerCategoryLabel,
   daySubCountyLabel,
   outcomeLabel,
@@ -217,6 +219,12 @@ export default function CallBookPage() {
         <FilterButton active={view === 'week'} onClick={() => setView('week')} label="Weekly schedule" />
         <FilterButton active={view === 'queue'} onClick={() => setView('queue')} label="Call queue" />
       </div>
+      {!loading && summary && (
+        <DayPlanTicker
+          summary={summary}
+          day={view === 'overview' && summary.is_call_day ? summary.weekday : day}
+        />
+      )}
       <div className="relative max-w-md">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -265,6 +273,7 @@ export default function CallBookPage() {
           position={queue.length ? (page - 1) * DEFAULT_PAGE_SIZE + Math.min(index, queue.length - 1) + 1 : 0}
           total={listed}
           markingOpen={markingOpen}
+          day={day}
           dayLabel={weekdayLabel(day)}
           dayPlaces={daySubCountyLabel(
             (summary?.days || []).find((item) => item.weekday === day),
@@ -292,6 +301,42 @@ export default function CallBookPage() {
         />
       )}
     </PageShell>
+  );
+}
+
+/**
+ * Live day-plan ticker: called vs not called for the selected weekday.
+ *
+ * @param {object} props.summary Week summary with `days`.
+ * @param {number} props.day Weekday 0–4 from the day plan.
+ */
+function DayPlanTicker({ summary, day }) {
+  const counts = callDayPlanCounts(summary, day);
+  if (!counts) return null;
+  const label = weekdayLabel(day) || 'Today';
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
+      data-testid="call-day-ticker"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label} plan
+      </span>
+      <span className="font-semibold tabular-nums text-success" data-testid="call-day-ticker-called">
+        {counts.called} called
+      </span>
+      <span className="text-muted-foreground" aria-hidden="true">·</span>
+      <span className="font-semibold tabular-nums text-destructive" data-testid="call-day-ticker-not-called">
+        {counts.not_called} not called
+      </span>
+      {counts.callable > 0 && (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {counts.callable} on this day&apos;s plan
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -388,6 +433,7 @@ function WeekPlan({ summary, day, rows, page, pageCount, total, onDay, onPage, o
     not_called: 0,
     label,
   }));
+  const selected = days.find((item) => item.weekday === day) || days[0];
   const range = summary.week_start && summary.week_end
     ? `${summary.week_start.slice(8)}–${summary.week_end.slice(8)} ${summary.week_start.slice(5, 7)}`
     : '';
@@ -411,18 +457,24 @@ function WeekPlan({ summary, day, rows, page, pageCount, total, onDay, onPage, o
             {daySubCountyLabel(item, 2) && (
               <span className="mt-1 block truncate text-[10px] leading-tight">{daySubCountyLabel(item, 2)}</span>
             )}
-            <span className="block text-xl font-semibold tabular-nums">{item.callable}</span>
-            <span className="block text-xs opacity-80">Calls</span>
+            <span className="block text-xl font-semibold tabular-nums">{item.not_called}</span>
+            <span className="block text-xs opacity-80">Not called</span>
+            <span className="mt-1 block text-[10px] opacity-80 tabular-nums">
+              {item.called} called
+            </span>
           </button>
         ))}
       </div>
       <h3 className="text-sm font-medium">
         {weekdayLabel(day)} — call schedule
-        {daySubCountyLabel(days.find((item) => item.weekday === day), 12) && (
+        {daySubCountyLabel(selected, 12) && (
           <span className="mt-0.5 block font-normal text-muted-foreground">
-            {daySubCountyLabel(days.find((item) => item.weekday === day), 12)}
+            {daySubCountyLabel(selected, 12)}
           </span>
         )}
+        <span className="mt-1 block font-normal text-muted-foreground tabular-nums">
+          {callDayPlanTicker(selected, { includeCallable: true })}
+        </span>
       </h3>
       {rows.length === 0 && <p className="text-sm text-muted-foreground">No customers on this day.</p>}
       <ul className="space-y-2">
@@ -502,7 +554,8 @@ function outcomeTone(outcome) {
  * @param {Function} props.onSaved Reloads after a record is saved.
  * @param {Function} props.onView Opens this customer's general information.
  */
-function Workspace({ summary, current, position, total, markingOpen, dayLabel, dayPlaces = '', onPrevious, onSaved, onView }) {
+function Workspace({ summary, current, position, total, markingOpen, dayLabel, dayPlaces = '', day = 0, onPrevious, onSaved, onView }) {
+  const dayCounts = callDayPlanCounts(summary, day);
   return (
     <section className="space-y-4 rounded-md border border-border p-3" data-testid="call-workspace">
       <div className="flex items-start justify-between gap-2">
@@ -512,6 +565,11 @@ function Workspace({ summary, current, position, total, markingOpen, dayLabel, d
           <p className="text-xs text-muted-foreground">
             {total ? `Current customer · ${position} of ${total}` : 'No customer matches'}
           </p>
+          {dayCounts && (
+            <p className="mt-1 text-xs font-medium tabular-nums text-foreground" data-testid="call-workspace-day-ticker">
+              {callDayPlanTicker(dayCounts, { includeCallable: true })}
+            </p>
+          )}
         </div>
         <Badge variant={current?.called_this_week ? 'success' : 'warning'}>
           {current?.called_this_week ? 'Recorded' : 'Pending'}
