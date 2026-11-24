@@ -154,7 +154,18 @@ export const NAV_SECTIONS = [
           ['debt_management', 'approve'],
         ],
       },
-      { to: '/sales/field', label: 'Field sales', icon: MapPin, permission: ['dispatch', 'view'] },
+    ],
+  },
+  {
+    id: 'field',
+    label: 'Field',
+    items: [
+      {
+        to: '/sales/field',
+        label: 'Field orders',
+        icon: MapPin,
+        permission: ['dispatch', 'view'],
+      },
       {
         to: '/sales/field-loads',
         label: 'Field loads',

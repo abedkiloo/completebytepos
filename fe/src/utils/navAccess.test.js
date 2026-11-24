@@ -71,9 +71,11 @@ describe('navAccess', () => {
     ).toBe(false);
   });
 
-  test('manager sees reports section but not module settings', () => {
+  test('manager sees reports and field sections but not module settings', () => {
     const mgr = ctx(PERSONA.MANAGER);
     expect(VISIBLE_SECTIONS[PERSONA.MANAGER]).toContain('reports');
+    expect(VISIBLE_SECTIONS[PERSONA.MANAGER]).toContain('field');
+    expect(VISIBLE_SECTIONS[PERSONA.SALES]).toContain('field');
     expect(
       canSeeNavItem(
         { to: '/module-settings', label: 'Modules', requireSuperAdmin: true },

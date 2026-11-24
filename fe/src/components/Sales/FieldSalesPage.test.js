@@ -259,7 +259,7 @@ describe('FieldSalesPage', () => {
 
     dispatchAPI.list.mockResolvedValue({ data: { results: [], count: 0 } });
     fireEvent.click(screen.getAllByRole('button', { name: /Refresh/i })[0]);
-    await waitFor(() => expect(screen.getByText('No field sales')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('No field orders')).toBeInTheDocument());
   });
 
   test('array payload, packed label, and view-only mode', async () => {
@@ -300,7 +300,7 @@ describe('FieldSalesPage', () => {
     dispatchAPI.list.mockRejectedValueOnce({});
     render(<FieldSalesPage />);
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith('Failed to load field sales'),
+      expect(toast.error).toHaveBeenCalledWith('Failed to load field orders'),
     );
 
     dispatchAPI.list.mockResolvedValue({ data: { results: [assigned], count: 1 } });

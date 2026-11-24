@@ -88,8 +88,8 @@ export default function FieldLoadsPage() {
     return (
       <PageShell>
         <PageHeader
-          eyebrow="Sales"
-          title="Field operations"
+          eyebrow="Field"
+          title="Field loads"
           description="Field loads are turned off. Turn them on under Module settings, Sales, Field loads."
         />
       </PageShell>
@@ -99,9 +99,9 @@ export default function FieldLoadsPage() {
   return (
     <PageShell>
       <PageHeader
-        eyebrow="Sales"
-        title="Field operations"
-        description="Sell from stock already on a load. The shop counts what comes back."
+        eyebrow="Field"
+        title="Field loads"
+        description="Stock an agent carries. Issue a bag, sell from that bag, then count what comes back. This is not a field order."
       />
       {view === 'list' && (
         <>
@@ -1006,7 +1006,7 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-xs text-muted-foreground">Note</span>
-            <Input aria-label="Sale notes" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} />
+            <textarea aria-label="Sale notes" value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} />
           </label>
           <Button
             type="button"

@@ -212,9 +212,9 @@ export default function LeavePage() {
         </label>
         <label className="text-sm">
           Note
-          <input
+          <textarea
             aria-label="Note"
-            className="mt-1 block rounded border px-2 py-1"
+            className="mt-1 block w-full"
             value={note}
             maxLength={300}
             onChange={(event) => setNote(event.target.value)}

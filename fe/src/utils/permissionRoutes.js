@@ -74,6 +74,7 @@ export const PERMISSION_MODULE_ROUTES = {
   customers: '/customers',
   debt_management: '/customers/debt',
   dispatch: '/sales/field',
+  agents: '/sales/field-loads',
   website: '/website',
 };
 
@@ -87,6 +88,7 @@ export const NAV_SECTION_MODULES = {
   employees: ['employees', 'appraisals', 'payroll'],
   inventory: ['products', 'categories', 'barcodes'],
   website: 'website',
+  field: ['dispatch', 'agents'],
 };
 
 /** Path prefixes that need a specific permission action (beyond module enablement). */

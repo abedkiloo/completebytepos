@@ -33,6 +33,7 @@ describe('permissionRoutes registry', () => {
       'inventory', 'barcodes', 'expenses', 'income', 'accounting',
       'daily_notes', 'suppliers', 'employees', 'appraisals', 'payroll', 'customers', 'debt_management',
       'dispatch',
+      'agents',
     ];
     for (const mod of backendUiModules) {
       expect(PERMISSION_MODULE_ROUTES[mod]).toBeTruthy();

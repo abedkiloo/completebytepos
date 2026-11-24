@@ -144,7 +144,7 @@ const FieldSalesPage = () => {
       toast.error(
         error.response?.data?.detail
           || error.response?.data?.error
-          || 'Failed to load field sales',
+          || 'Failed to load field orders',
       );
     } finally {
       setLoading(false);
@@ -305,9 +305,9 @@ const FieldSalesPage = () => {
 
   const emptyMessage = useMemo(() => {
     if (filters.status === 'awaiting_pack') {
-      return 'No field sales waiting to be packed.';
+      return 'No field orders waiting to be packed.';
     }
-    return 'No field sales match these filters.';
+    return 'No field orders match these filters.';
   }, [filters.status]);
 
   if (loading && orders.length === 0) {
@@ -317,8 +317,9 @@ const FieldSalesPage = () => {
   return (
     <PageShell>
       <PageHeader
-        title="Field sales"
-        description="Field sales from the road — pack, assign a sales person or driver, or leave ready for them to claim."
+        eyebrow="Field"
+        title="Field orders"
+        description="Customer orders from the road. Pack them here, then assign a salesperson or driver, or leave them ready to claim."
       >
         <Button variant="outline" onClick={loadOrders} disabled={loading}>
           <RefreshCw className="h-4 w-4" />
@@ -460,7 +461,7 @@ const FieldSalesPage = () => {
       {orders.length === 0 ? (
         <EmptyState
           icon={MapPin}
-          title="No field sales"
+          title="No field orders"
           description={emptyMessage}
           actionLabel="Refresh"
           onAction={loadOrders}

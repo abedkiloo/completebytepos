@@ -43,13 +43,14 @@ export const VISIBLE_SECTIONS = {
     'suppliers',
     'employees',
     'sales',
+    'field',
     'customers',
     'invoicing',
     'reports',
     'accounting',
     'website',
   ],
-  [PERSONA.SALES]: ['main', 'sales', 'customers'],
+  [PERSONA.SALES]: ['main', 'sales', 'field', 'customers'],
 };
 
 /** Sales nav: cashiers only need fast checkout paths. */

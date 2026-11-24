@@ -332,3 +332,22 @@
     width: 100%;
   }
 }
+
+/* Notes boxes stay tall and easy to read on every screen. */
+textarea {
+  min-height: 9rem;
+  font-size: 1rem;
+  line-height: 1.55;
+  padding: 0.75rem 0.875rem;
+  border: 1.5px solid hsl(var(--input));
+  border-radius: 0.5rem;
+  background: hsl(var(--muted) / 0.45);
+  color: hsl(var(--foreground));
+}
+
+textarea:focus {
+  outline: none;
+  border-color: hsl(var(--ring));
+  background: hsl(var(--background));
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.28);
+}
