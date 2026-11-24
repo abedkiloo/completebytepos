@@ -5,6 +5,7 @@ import {
   canAccessRoute,
   isManagerOrAdminFromStorage,
   userSeesAllSalesFromStorage,
+  userCanViewPeriodTotalsFromStorage,
   userMayViewDeliveryHistory,
   isSalesPersonnelProfile,
   terminalMpesaScreenshotRequired,
@@ -299,6 +300,29 @@ describe('roleAccess', () => {
       JSON.stringify([{ module: 'sales', action: 'view_all', name: 'sales.view_all' }])
     );
     expect(userSeesAllSalesFromStorage()).toBe(true);
+  });
+
+  test('userCanViewPeriodTotalsFromStorage follows sales.period_totals', () => {
+    localStorage.setItem('user', JSON.stringify({ id: 1, username: 'mgr' }));
+    localStorage.setItem('permissions', JSON.stringify([]));
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'manager', custom_role: { name: 'Manager' } })
+    );
+    expect(userCanViewPeriodTotalsFromStorage()).toBe(false);
+
+    localStorage.setItem(
+      'permissions',
+      JSON.stringify([{ module: 'sales', action: 'period_totals', name: 'sales.period_totals' }])
+    );
+    expect(userCanViewPeriodTotalsFromStorage()).toBe(true);
+
+    localStorage.setItem('permissions', JSON.stringify([]));
+    localStorage.setItem(
+      'profile',
+      JSON.stringify({ role: 'admin', custom_role: { name: 'Admin' } })
+    );
+    expect(userCanViewPeriodTotalsFromStorage()).toBe(true);
   });
 
   test('userMayViewDeliveryHistory is manager/admin or delivery.history', () => {

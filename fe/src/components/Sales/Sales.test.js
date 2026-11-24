@@ -19,9 +19,11 @@ jest.mock('../../utils/roleAccess', () => ({
     ),
   isManagerOrAdminFromStorage: () => true,
   userSeesAllSalesFromStorage: () => mockSeesAllSales(),
+  userCanViewPeriodTotalsFromStorage: () => mockCanViewPeriodTotals(),
 }));
 
 const mockSeesAllSales = jest.fn(() => false);
+const mockCanViewPeriodTotals = jest.fn(() => false);
 
 jest.mock('../../utils/saleRefund', () => ({
   userCanRefundSales: () => false,
@@ -82,6 +84,7 @@ describe('Sales history export', () => {
       ],
     });
     mockSeesAllSales.mockReturnValue(false);
+    mockCanViewPeriodTotals.mockReturnValue(false);
   });
 
   it('hides the Sold by filter from staff who only see their own sales', async () => {
@@ -182,8 +185,17 @@ describe('Sales history export', () => {
     expect(screen.queryByRole('button', { name: /Show total for selected range/i })).not.toBeInTheDocument();
   });
 
-  it('lets managers calculate the selected period total on click', async () => {
+  it('hides Show total without sales.period_totals', async () => {
     mockSeesAllSales.mockReturnValue(true);
+    mockCanViewPeriodTotals.mockReturnValue(false);
+    render(<Sales />);
+    await waitFor(() => expect(screen.getByText('S-100')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /Show total for selected range/i })).not.toBeInTheDocument();
+  });
+
+  it('lets roles with sales.period_totals calculate the selected period total', async () => {
+    mockSeesAllSales.mockReturnValue(true);
+    mockCanViewPeriodTotals.mockReturnValue(true);
     salesAPI.historySummary.mockResolvedValue({
       data: {
         count: 2,

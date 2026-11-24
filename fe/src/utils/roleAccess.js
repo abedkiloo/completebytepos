@@ -173,6 +173,24 @@ export function isManagerOrAdminFromStorage() {
 }
 
 /**
+ * On-click period money totals (Sales history / Payments trail Show total).
+ * Grant ``sales.period_totals`` on any role. Super Admin / legacy Admin keep
+ * access; Manager / Sales need the Roles checkbox.
+ *
+ * @returns {boolean} True when the stored permission list includes
+ *   ``sales.period_totals``, or the signed-in profile is Super Admin / Admin.
+ */
+export function userCanViewPeriodTotalsFromStorage() {
+  const { permissions, user, profile } = getStoredAuth();
+  if (user?.is_superuser) return true;
+  if (profile?.is_super_admin) return true;
+  if (hasPermission(permissions, 'sales', 'period_totals')) return true;
+  // Legacy Admin profiles often ship an empty permission list in storage.
+  const legacy = (profile?.role || '').toString().trim();
+  return legacy === 'super_admin' || legacy === 'admin';
+}
+
+/**
  * Store-wide sales totals (today / week / month / daily tracker for all sellers).
  * Default: Super Admin / Admin / Manager. Grant sales.view_all to open it for others.
  */

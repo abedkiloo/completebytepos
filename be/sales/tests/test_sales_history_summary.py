@@ -9,10 +9,10 @@ from rest_framework import status
 from products.models import Category, Product
 from sales.models import Sale, SaleItem
 from sales.sales_history_summary import summarize_sales_history
-from utils.tests.api_test_base import ManagerAPITestCase
+from utils.tests.api_test_base import ManagerAPITestCase, SuperAdminAPITestCase
 
 
-class SalesHistorySummaryTests(ManagerAPITestCase):
+class SalesHistorySummaryUnitTests(ManagerAPITestCase):
     def setUp(self):
         super().setUp()
         category = Category.objects.create(name='HistSum', is_active=True)
@@ -85,10 +85,27 @@ class SalesHistorySummaryTests(ManagerAPITestCase):
         self.assertEqual(methods['mpesa']['count'], 1)
         self.assertEqual(Decimal(methods['mpesa']['total']), Decimal('250.00'))
 
-    def test_history_summary_endpoint(self):
-        url = '/api/sales/history-summary/'
+    def test_history_summary_forbidden_for_manager(self):
         res = self.client.get(
-            url,
+            '/api/sales/history-summary/',
+            {
+                'date_from': self.day,
+                'date_to': self.day,
+                'status': 'completed',
+            },
+        )
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_history_summary_allowed_when_manager_has_period_totals(self):
+        from accounts.models import Permission
+
+        period = Permission.objects.get(module='sales', action='period_totals')
+        role = self.manager_user.profile.custom_role
+        role.permissions.add(period)
+        if hasattr(role, '_permission_pairs_cache'):
+            delattr(role, '_permission_pairs_cache')
+        res = self.client.get(
+            '/api/sales/history-summary/',
             {
                 'date_from': self.day,
                 'date_to': self.day,
@@ -97,7 +114,57 @@ class SalesHistorySummaryTests(ManagerAPITestCase):
         )
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data['count'], 2)
-        self.assertEqual(Decimal(res.data['total_amount']), Decimal('350.00'))
+        role.permissions.remove(period)
+        if hasattr(role, '_permission_pairs_cache'):
+            delattr(role, '_permission_pairs_cache')
+
+
+class SalesHistorySummaryAdminTests(SuperAdminAPITestCase):
+    def setUp(self):
+        super().setUp()
+        category = Category.objects.create(name='HistSumAdmin', is_active=True)
+        product = Product.objects.create(
+            name='Hist Admin Item',
+            sku='HIST-SUM-A1',
+            category=category,
+            price=Decimal('100'),
+            stock_quantity=50,
+            track_stock=True,
+            is_active=True,
+        )
+        now = timezone.now()
+        self.day = timezone.localdate().isoformat()
+        sale = Sale.objects.create(
+            sale_number='SALE-HIST-ADMIN',
+            status='completed',
+            sale_type='pos',
+            subtotal=Decimal('100.00'),
+            total=Decimal('100.00'),
+            amount_paid=Decimal('100.00'),
+            payment_method='cash',
+            cashier=self.admin,
+            occurred_at=now,
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=product,
+            quantity=1,
+            unit_price=Decimal('100'),
+            subtotal=Decimal('100'),
+        )
+
+    def test_history_summary_endpoint(self):
+        res = self.client.get(
+            '/api/sales/history-summary/',
+            {
+                'date_from': self.day,
+                'date_to': self.day,
+                'status': 'completed',
+            },
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data['count'], 1)
+        self.assertEqual(Decimal(res.data['total_amount']), Decimal('100.00'))
 
     def test_history_summary_rejects_missing_dates(self):
         res = self.client.get('/api/sales/history-summary/', {'status': 'completed'})

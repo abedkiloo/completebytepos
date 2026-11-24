@@ -57,6 +57,11 @@ class DefaultRolePermissionTests(TestCase):
         self.assertFalse(self._has(self.sales_role, 'debt_management', 'approve'))
         self.assertFalse(self._has(self.sales_role, 'debt_management', 'payments_trail'))
 
+    def test_period_totals_is_opt_in_for_manager(self):
+        self.assertTrue(self._has(self.super_role, 'sales', 'period_totals'))
+        self.assertFalse(self._has(self.manager_role, 'sales', 'period_totals'))
+        self.assertFalse(self._has(self.sales_role, 'sales', 'period_totals'))
+
     def test_super_admin_has_all_permissions(self):
         total = Permission.objects.count()
         self.assertEqual(self.super_role.permissions.count(), total)

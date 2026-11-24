@@ -31,10 +31,12 @@ jest.mock('../../services/api', () => ({
 
 const mockGetStoredAuth = jest.fn();
 const mockHasPermission = jest.fn();
+const mockCanViewPeriodTotals = jest.fn(() => true);
 
 jest.mock('../../utils/roleAccess', () => ({
   getStoredAuth: (...args) => mockGetStoredAuth(...args),
   hasPermission: (...args) => mockHasPermission(...args),
+  userCanViewPeriodTotalsFromStorage: (...args) => mockCanViewPeriodTotals(...args),
 }));
 
 jest.mock('../../utils/moduleFeatures', () => ({
@@ -97,7 +99,7 @@ import {
 } from '../../utils/debtManagement';
 import PaymentsTrailPage from './PaymentsTrailPage';
 
-function grantTrailAccess() {
+function grantTrailAccess({ canViewTotals = true } = {}) {
   mockGetStoredAuth.mockReturnValue({
     permissions: [
       {
@@ -106,13 +108,16 @@ function grantTrailAccess() {
         name: 'debt_management.payments_trail',
       },
     ],
+    profile: { role: canViewTotals ? 'admin' : 'manager' },
   });
   mockHasPermission.mockReturnValue(true);
+  mockCanViewPeriodTotals.mockReturnValue(canViewTotals);
 }
 
 function denyTrailAccess() {
   mockGetStoredAuth.mockReturnValue({ permissions: [] });
   mockHasPermission.mockReturnValue(false);
+  mockCanViewPeriodTotals.mockReturnValue(false);
 }
 
 describe('PaymentsTrailPage today filter', () => {
@@ -284,5 +289,12 @@ describe('PaymentsTrailPage today filter', () => {
     );
     expect(screen.queryByTestId('payments-trail-today')).not.toBeInTheDocument();
     expect(customersAPI.paymentsTrail).not.toHaveBeenCalled();
+  });
+
+  it('security: managers with trail access still cannot Show total', async () => {
+    grantTrailAccess({ canViewTotals: false });
+    render(<PaymentsTrailPage />);
+    await waitFor(() => expect(customersAPI.paymentsTrail).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /show total for selected range/i })).not.toBeInTheDocument();
   });
 });

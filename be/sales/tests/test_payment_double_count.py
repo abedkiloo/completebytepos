@@ -126,7 +126,7 @@ class PaymentDoubleCountTests(ManagerAPITestCase):
         # 100 checkout tender + 200 settlement = 300 (not 100+200+300)
         self.assertEqual(Decimal(summary['total_amount']), Decimal('300.00'))
 
-    def test_summary_api_matches_single_count(self):
+    def test_summary_api_forbidden_for_manager(self):
         CustomerService().record_wallet_payment(
             self.customer,
             Decimal('500.00'),
@@ -138,8 +138,7 @@ class PaymentDoubleCountTests(ManagerAPITestCase):
             '/api/sales/customers/payments-trail/summary/',
             {'date_from': today, 'date_to': today},
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        self.assertEqual(Decimal(response.data['total_amount']), Decimal('500.00'))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_kogi_style_one_collection_not_two_rows(self):
         """Debt sale + later M-Pesa collection must not also list Sale tender."""

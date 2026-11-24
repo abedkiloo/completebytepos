@@ -80,6 +80,11 @@ PERMISSIONS_DATA = [
     ('sales', 'export', 'Export sales'),
     ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
     ('sales', 'view_all', 'View all staff sales (store-wide today / week / month)'),
+    (
+        'sales',
+        'period_totals',
+        'Calculate selected-period money totals (Sales history and Payments trail Show total)',
+    ),
     ('agents', 'view', 'View customer sites and visit media'),
     ('agents', 'create', 'Create customer sites and media'),
     ('agents', 'update', 'Update sites, upload media, finalize visits'),
@@ -345,6 +350,8 @@ def _manager_queryset():
         # Daily Sales Tracker + store-wide sales totals are opt-in checkboxes.
         .exclude(module='sales', action='daily_sales')
         .exclude(module='sales', action='view_all')
+        # Period Show total stays admin unless this box is checked on the role.
+        .exclude(module='sales', action='period_totals')
         # Void/refund/rollback/unvoid stay off Manager unless explicitly checked.
         .exclude(module='sales', action='rollback')
         .exclude(module='sales', action='refund')

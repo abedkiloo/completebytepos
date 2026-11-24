@@ -64,6 +64,7 @@ class Permission(models.Model):
         ('claim', 'Claim'),
         ('claim_approve', 'Approve a claim'),
         ('view_cost', 'See cost of goods'),
+        ('period_totals', 'Period totals'),
     ]
 
     module = models.CharField(max_length=50, choices=MODULE_CHOICES)

@@ -24,6 +24,35 @@ _FIELD_AGENT_LEGACY_ROLES = frozenset({
 })
 
 
+def user_can_view_period_totals(user) -> bool:
+    """
+    Whether the user may calculate on-click period money totals.
+
+    Covers Sales history ``history-summary`` and Payments trail ``summary``.
+    Grant ``sales.period_totals`` on any role (Roles UI). Super Admin has it
+    by default; Manager / Sales do not unless checked.
+
+    Args:
+        user: Authenticated Django user, or None.
+
+    Returns:
+        bool — True when ``profile.has_permission('sales', 'period_totals')``
+        (or Django superuser). False for anonymous and ungated roles.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return False
+    if getattr(user, 'is_superuser', False):
+        return True
+
+    profile = getattr(user, 'profile', None)
+    if profile is None:
+        return False
+    try:
+        return bool(profile.has_permission('sales', 'period_totals'))
+    except Exception:
+        return False
+
+
 def user_sees_all_sales(user) -> bool:
     """
     Store-wide sales (today / week / month / history totals).

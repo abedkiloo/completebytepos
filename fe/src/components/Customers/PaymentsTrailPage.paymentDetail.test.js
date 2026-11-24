@@ -33,8 +33,10 @@ jest.mock('../../utils/roleAccess', () => ({
     permissions: [
       { module: 'debt_management', action: 'payments_trail', name: 'debt_management.payments_trail' },
     ],
+    profile: { role: 'admin' },
   }),
   hasPermission: () => true,
+  userCanViewPeriodTotalsFromStorage: () => true,
 }));
 
 jest.mock('../../utils/moduleFeatures', () => ({

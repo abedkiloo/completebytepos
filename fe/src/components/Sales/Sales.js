@@ -10,6 +10,7 @@ import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { toast } from '../../utils/toast';
 import {
   getStoredAuth,
+  userCanViewPeriodTotalsFromStorage,
   userSeesAllSalesFromStorage,
 } from '../../utils/roleAccess';
 import { useSellerOptions } from '../../hooks/useSellerOptions';
@@ -88,7 +89,7 @@ const Sales = () => {
   const canReturnForCorrection = isAdmin;
   const canViewDaily = canViewDailySalesFromStorage();
   const canFilterBySeller = userSeesAllSalesFromStorage();
-  const canShowPeriodTotal = canFilterBySeller;
+  const canShowPeriodTotal = userCanViewPeriodTotalsFromStorage();
   const sellerOptions = useSellerOptions(canFilterBySeller);
   const [filters, setFilters] = useState({
     date_from: '',

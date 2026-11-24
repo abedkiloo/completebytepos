@@ -5,7 +5,11 @@ import { Banknote, Calculator, FileSpreadsheet, Search } from 'lucide-react';
 import { customersAPI, salesAPI } from '../../services/api';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { toast } from '../../utils/toast';
-import { getStoredAuth, hasPermission } from '../../utils/roleAccess';
+import {
+  getStoredAuth,
+  hasPermission,
+  userCanViewPeriodTotalsFromStorage,
+} from '../../utils/roleAccess';
 import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { customerDetailPath, formatDebtTrail } from '../../utils/customerDetail';
@@ -69,6 +73,7 @@ function defaultDateFrom() {
 export default function PaymentsTrailPage() {
   const { permissions } = getStoredAuth();
   const allowed = hasPermission(permissions, 'debt_management', 'payments_trail');
+  const canShowPeriodTotal = allowed && userCanViewPeriodTotalsFromStorage();
   const canExport = allowed && isModuleFeatureEnabled('sales', 'payments_trail_export', true);
   const [kind, setKind] = useState('all');
   const [method, setMethod] = useState('');
@@ -163,7 +168,7 @@ export default function PaymentsTrailPage() {
   };
 
   const handleShowTotal = async () => {
-    if (!allowed || totalBusy) return;
+    if (!canShowPeriodTotal || totalBusy) return;
     setTotalBusy(true);
     try {
       const res = await customersAPI.paymentsTrailSummary(summaryFilterParams());
@@ -336,20 +341,22 @@ export default function PaymentsTrailPage() {
         <Button type="button" variant="outline" size="sm" onClick={load} disabled={loading}>
           Refresh
         </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          onClick={handleShowTotal}
-          disabled={totalBusy || loading}
-          aria-label="Show total for selected range"
-        >
-          <Calculator className="h-4 w-4 mr-1.5" />
-          {totalBusy ? 'Calculating…' : 'Show total'}
-        </Button>
+        {canShowPeriodTotal ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={handleShowTotal}
+            disabled={totalBusy || loading}
+            aria-label="Show total for selected range"
+          >
+            <Calculator className="h-4 w-4 mr-1.5" />
+            {totalBusy ? 'Calculating…' : 'Show total'}
+          </Button>
+        ) : null}
       </FilterBar>
 
-      {rangeTotal ? (
+      {canShowPeriodTotal && rangeTotal ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
             icon={Banknote}

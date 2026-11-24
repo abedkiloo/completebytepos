@@ -223,7 +223,7 @@ class PaymentsTrailExportTests(ManagerAPITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_summary_api_totals_selected_range(self):
+    def test_summary_api_forbidden_for_manager(self):
         response = self.client.get(
             '/api/sales/customers/payments-trail/summary/',
             {
@@ -231,11 +231,4 @@ class PaymentsTrailExportTests(ManagerAPITestCase):
                 'date_to': self.today.isoformat(),
             },
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        self.assertIn('total_amount', response.data)
-        self.assertGreaterEqual(response.data['count'], 3)
-        self.assertGreater(Decimal(response.data['total_amount']), Decimal('0'))
-        methods = {row['payment_method'] for row in response.data['by_method']}
-        self.assertIn('cash', methods)
-        self.assertIn('mpesa', methods)
-        self.assertIn('bank_transfer', methods)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

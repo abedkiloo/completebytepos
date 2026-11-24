@@ -574,15 +574,15 @@ class SaleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         """
         On-click Sales history totals for the selected period / filters.
 
-        Same filter keys as list. Requires date_from and date_to. Store-wide
-        viewers only (admin / manager / sales.view_all).
+        Same filter keys as list. Requires date_from and date_to.
+        Requires ``sales.period_totals`` (grantable per role).
         """
         from sales.sales_history_summary import summarize_sales_history
-        from sales.visibility import user_sees_all_sales
+        from sales.visibility import user_can_view_period_totals
 
-        if not user_sees_all_sales(request.user):
+        if not user_can_view_period_totals(request.user):
             return Response(
-                {'error': 'Only managers and admins can calculate sales history totals.'},
+                {'error': 'You need the Period totals permission to calculate this total.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -1961,10 +1961,21 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         permission_classes=[IsAuthenticated, RequirePerm('debt_management', 'payments_trail')],
     )
     def payments_trail_summary(self, request):
-        """Totals for the selected Payments trail date range / filters."""
+        """
+        Totals for the selected Payments trail date range / filters.
+
+        Requires ``sales.period_totals``. Roles with payments_trail can still
+        list rows without this grant.
+        """
         from sales.customer_module_settings import customers_show_wallet_balance
         from sales.payments_trail import summarize_payments_trail
+        from sales.visibility import user_can_view_period_totals
 
+        if not user_can_view_period_totals(request.user):
+            return Response(
+                {'error': 'You need the Period totals permission to calculate this total.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if not customers_show_wallet_balance():
             return self._feature_disabled_response('Wallet balance')
         try:

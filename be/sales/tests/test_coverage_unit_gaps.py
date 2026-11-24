@@ -68,7 +68,12 @@ from sales.sale_date import (
     sale_date_can_be_corrected,
     validate_sale_date_correction,
 )
-from sales.visibility import own_sales_q, user_sees_all_debt, user_sees_all_sales
+from sales.visibility import (
+    own_sales_q,
+    user_can_view_period_totals,
+    user_sees_all_debt,
+    user_sees_all_sales,
+)
 from settings.models import ModuleSetting, StoreSettings
 from settings.settings_service import SettingsService
 from django.core.cache import cache
@@ -198,14 +203,29 @@ class VisibilityUnitTests(TestCase):
     def test_superuser_and_legacy_admin_and_manager(self):
         su = User.objects.create_superuser('vis2_su', 'su@t.com', 'x')
         self.assertTrue(user_sees_all_sales(su))
+        self.assertTrue(user_can_view_period_totals(su))
 
         legacy = User.objects.create_user('vis2_legacy', password='x')
         UserProfile.objects.create(user=legacy, role='admin', is_active=True)
         self.assertTrue(user_sees_all_sales(legacy))
+        self.assertTrue(user_can_view_period_totals(legacy))
 
         mgr_legacy = User.objects.create_user('vis2_mgr_leg', password='x')
         UserProfile.objects.create(user=mgr_legacy, role='manager', is_active=True)
         self.assertTrue(user_sees_all_sales(mgr_legacy))
+        self.assertFalse(user_can_view_period_totals(mgr_legacy))
+        self.assertFalse(user_can_view_period_totals(self.manager))
+
+        from accounts.models import Permission
+        period = Permission.objects.get(module='sales', action='period_totals')
+        role = self.manager.profile.custom_role
+        role.permissions.add(period)
+        if hasattr(role, '_permission_pairs_cache'):
+            delattr(role, '_permission_pairs_cache')
+        self.assertTrue(user_can_view_period_totals(self.manager))
+        role.permissions.remove(period)
+        if hasattr(role, '_permission_pairs_cache'):
+            delattr(role, '_permission_pairs_cache')
 
     def test_permission_exception_and_own_sales_q(self):
         user = User.objects.create_user('vis2_exc', password='x')
