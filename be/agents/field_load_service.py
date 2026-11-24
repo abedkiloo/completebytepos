@@ -96,17 +96,22 @@ def loads_for_user(user):
     Loads this user is allowed to see.
 
     Args:
-        user: Authenticated user. Issuers and approvers see every load.
-            Everyone else sees only loads where they are the agent.
+        user: Authenticated user. Approvers see every load. Writers without
+            approve see loads they carry or wrote. Everyone else sees only
+            loads where they are the agent.
 
     Returns:
         QuerySet of ``FieldLoad``. No writes.
     """
+    from django.db.models import Q
+
     qs = FieldLoad.objects.select_related(
         'agent', 'issued_by', 'reviewed_by', 'issue_approved_by',
     )
-    if user_may_issue(user) or user_may_approve(user):
+    if user_may_approve(user):
         return qs
+    if user_may_issue(user):
+        return qs.filter(Q(agent=user) | Q(issued_by=user))
     return qs.filter(agent=user)
 
 
@@ -829,7 +834,7 @@ def add_line(*, load_id: int, product_id: int, quantity, user, variant_id=None) 
         load_id: Open load primary key.
         product_id: Product to add or increase.
         quantity: Extra units, 1–100000. The line total cannot pass 100000.
-        user: Staff member with issue rights.
+        user: Manager with approve rights (stock leaves immediately).
         variant_id: Optional variant primary key.
 
     Returns:
@@ -843,8 +848,8 @@ def add_line(*, load_id: int, product_id: int, quantity, user, variant_id=None) 
         Increases ``quantity_taken`` or inserts a line, and removes that
         quantity from shop stock.
     """
-    if not user_may_issue(user):
-        raise FieldLoadError('forbidden', 'You cannot add stock to a field load.')
+    if not user_may_approve(user):
+        raise FieldLoadError('forbidden', 'Only a manager can add stock to an open load.')
     qty = _parse_qty(quantity, allow_zero=False)
     with transaction.atomic():
         load = FieldLoad.objects.select_for_update().filter(pk=load_id).first()
@@ -1109,13 +1114,29 @@ def _can_touch(load: FieldLoad, user) -> bool:
         user: Authenticated user.
 
     Returns:
-        bool: True for the agent, an issuer, or an approver.
+        bool: True for the carrier on the load, or a manager who can approve.
+        Having write/issue rights alone does not open another agent's bag.
     """
     if user is None or not getattr(user, 'is_authenticated', False):
         return False
     if load.agent_id == user.id:
         return True
-    return user_may_issue(user) or user_may_approve(user)
+    return user_may_approve(user)
+
+
+def _default_sale_branch():
+    """
+    Branch for a field-load sale when multi-branch is on.
+
+    Returns:
+        Branch or None when branch support is off or no active branch exists.
+    """
+    from settings.models import Branch
+    from settings.utils import is_branch_support_enabled
+
+    if not is_branch_support_enabled():
+        return None
+    return Branch.get_headquarters() or Branch.get_active_branches().first()
 
 
 def _create_load_sale(
@@ -1183,6 +1204,7 @@ def _create_load_sale(
             },
             [],
             user=load.agent or user,
+            branch=_default_sale_branch(),
             validated_items=validated,
             complete=False,
         )

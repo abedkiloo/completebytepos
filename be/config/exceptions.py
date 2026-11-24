@@ -26,6 +26,22 @@ def custom_exception_handler(exc, context):
     """
     response = exception_handler(exc, context)
 
+    # Sale Detail 404: replace Django's "No Sale matches the given query."
+    if (
+        response is not None
+        and response.status_code == 404
+        and isinstance(getattr(response, 'data', None), dict)
+    ):
+        detail = response.data.get('detail')
+        if isinstance(detail, str) and 'No Sale matches the given query' in detail:
+            view = context.get('view')
+            view_name = type(view).__name__ if view is not None else ''
+            if 'Sale' in view_name:
+                response.data['detail'] = (
+                    'This sale is not available. It may belong to another staff '
+                    'member, another branch, or it may have been removed.'
+                )
+
     if response is not None and response.status_code >= 500:
         logger.error(
             'DRF Exception: %s: %s',

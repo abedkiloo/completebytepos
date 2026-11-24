@@ -2069,6 +2069,7 @@ class CustomerViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 ledger_page_size=ledger_page_size,
                 orders_ordering=request.query_params.get('orders_ordering'),
                 ledger_ordering=request.query_params.get('ledger_ordering'),
+                base_sales_queryset=SaleService().build_queryset({}, request=request),
             )
         except (LookupError, Customer.DoesNotExist):
             return Response({'error': 'Customer not found.'}, status=status.HTTP_404_NOT_FOUND)

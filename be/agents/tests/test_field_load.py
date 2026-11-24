@@ -473,7 +473,8 @@ class FieldLoadSecurityTests(SuperAdminAPITestCase):
             },
             format='json',
         )
-        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(denied.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn('Locked Cups', denied.content.decode())
         other = self._client(self.other)
         hidden = other.get(f"/api/agents/field-loads/{issued.data['id']}/")
         self.assertEqual(hidden.status_code, status.HTTP_404_NOT_FOUND)
@@ -786,9 +787,11 @@ class FieldLoadCoverageTests(SuperAdminAPITestCase):
         self.assertEqual(self.client.get('/api/agents/field-loads/agents/').status_code, status.HTTP_200_OK)
         agent = APIClient()
         agent.credentials(HTTP_AUTHORIZATION=f'Bearer {RefreshToken.for_user(self.agent).access_token}')
-        denied_agents = agent.get('/api/agents/field-loads/agents/')
-        self.assertEqual(denied_agents.status_code, status.HTTP_403_FORBIDDEN)
-        self.assertNotIn(self.customer.phone, denied_agents.content.decode())
+        own_roster = agent.get('/api/agents/field-loads/agents/')
+        self.assertEqual(own_roster.status_code, status.HTTP_200_OK)
+        self.assertFalse(own_roster.data.get('choose_employee'))
+        self.assertEqual(own_roster.data['results'][0]['id'], self.agent.id)
+        self.assertNotIn(self.customer.phone, own_roster.content.decode())
 
         inactive = User.objects.create_user(username='load_inactive', password='x', is_active=False)
         self.assertEqual(self._issue(agent=inactive).status_code, status.HTTP_400_BAD_REQUEST)
@@ -1165,6 +1168,36 @@ class FieldLoadMakerCheckerTests(SuperAdminAPITestCase):
             },
             format='json',
         )
+
+    def test_field_sales_agent_writes_load_for_manager_approval(self):
+        """Corrected: Field Sales create a load; stock waits for a manager."""
+        agent = APIClient()
+        agent.force_authenticate(user=self.agent)
+        written = self._write(agent, qty=5, agent_id=self.agent.id)
+        self.assertEqual(written.status_code, status.HTTP_201_CREATED, written.content)
+        self.assertEqual(written.data['status'], 'awaiting_issue')
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 50)
+        for_other = agent.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.sales.id,
+                'lines': [{'product_id': self.cups.id, 'quantity': 1}],
+            },
+            format='json',
+        )
+        self.assertEqual(for_other.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn(self.cups.sku, for_other.content.decode())
+        self.assertNotIn('0718', for_other.content.decode())
+        approved = self.client.post(
+            f"/api/agents/field-loads/{written.data['id']}/approve-issue/",
+            {},
+            format='json',
+        )
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.content)
+        self.assertEqual(approved.data['status'], 'open')
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 45)
 
     def test_stock_stays_until_a_different_manager_approves(self):
         sales = APIClient()

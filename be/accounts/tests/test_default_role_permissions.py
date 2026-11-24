@@ -110,7 +110,7 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.super_role, 'sales', 'daily_sales'))
 
     def test_field_sales_locked_to_customers_sales_commission(self):
-        """Field Sales: customers + own sales + agents visit + view catalog + payslips."""
+        """Field Sales: customers + own sales + agents visit + write field loads + catalog + payslips."""
         for module, action in (
             ('customers', 'view'),
             ('customers', 'create'),
@@ -120,6 +120,8 @@ class DefaultRolePermissionTests(TestCase):
             ('sales', 'daily_sales'),
             ('agents', 'view'),
             ('agents', 'create'),
+            ('agents', 'field_load'),
+            ('agents', 'field_load_issue'),
             ('products', 'view'),
             ('payroll', 'view_own'),
         ):
@@ -127,6 +129,10 @@ class DefaultRolePermissionTests(TestCase):
                 self._has(self.field_role, module, action),
                 f'Field Sales should have {module}.{action}',
             )
+        self.assertFalse(
+            self._has(self.field_role, 'agents', 'field_load_approve'),
+            'Field Sales must not approve their own load issue',
+        )
         for module in (
             'pos',
             'debt_management',

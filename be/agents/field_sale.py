@@ -86,6 +86,12 @@ def record_field_sale(order: FieldOrder, user=None, *, move_stock: bool = True, 
     service = SaleService()
     try:
         with transaction.atomic():
+            from settings.models import Branch
+            from settings.utils import is_branch_support_enabled
+
+            branch = None
+            if is_branch_support_enabled():
+                branch = Branch.get_headquarters() or Branch.get_active_branches().first()
             sale = service.create_sale(
                 {
                     'sale_type': 'pos',
@@ -100,6 +106,7 @@ def record_field_sale(order: FieldOrder, user=None, *, move_stock: bool = True, 
                 },
                 [],
                 user=agent,
+                branch=branch,
                 validated_items=items,
                 complete=move_stock,
             )

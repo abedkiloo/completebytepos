@@ -91,12 +91,12 @@ PERMISSIONS_DATA = [
     (
         'agents',
         'field_load_issue',
-        'Issue shop stock onto a field agent load and add more while they are out',
+        'Write a field load for yourself (or issue for someone else when you can approve)',
     ),
     (
         'agents',
         'field_load_approve',
-        'Accept a field load return or send the count back',
+        'Approve or send back a written field load, and accept or send back the return count',
     ),
     ('dispatch', 'view', 'View field-order dispatch queue'),
     ('dispatch', 'update', 'Pack and assign field orders'),
@@ -413,7 +413,7 @@ def _field_agent_queryset():
         )
         | Permission.objects.filter(
             module='agents',
-            action__in=['view', 'create', 'update', 'field_load'],
+            action__in=['view', 'create', 'update', 'field_load', 'field_load_issue'],
         )
         | Permission.objects.filter(
             module='products',
@@ -632,17 +632,18 @@ def grant_field_load_to_roles():
     """
     Give field loads to the roles that carry or check stock.
 
-    Field Sales can see their load, sell, and submit a return. Sales
-    Personnel can also issue stock. Manager and Super Admin can issue
-    and accept the count. Additive for Sales and Manager. Field Sales is
-    reset earlier in ``sync_default_roles`` and then receives ``field_load``
-    here.
+    Field Sales write a load for themselves (awaits manager approval), sell
+    from an open load, and submit the return count. Sales Personnel do the
+    same. Manager and Super Admin can also approve issue and accept returns.
+    Additive for Sales and Manager. Field Sales is reset earlier in
+    ``sync_default_roles`` and then receives ``field_load`` +
+    ``field_load_issue`` here.
 
     Returns:
         int: Roles that gained at least one field-load permission. Range 0–10_000.
     """
     wanted = {
-        'Field Sales': ['field_load'],
+        'Field Sales': ['field_load', 'field_load_issue'],
         'Sales Personnel': ['field_load', 'field_load_issue'],
         'Manager': ['field_load', 'field_load_issue', 'field_load_approve'],
         'Super Admin': ['field_load', 'field_load_issue', 'field_load_approve'],

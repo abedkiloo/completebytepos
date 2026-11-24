@@ -104,7 +104,11 @@ class SaleService(BaseService):
 
                 if branch_id:
                     try:
-                        queryset = queryset.filter(branch_id=int(branch_id))
+                        # Field/load sales created without a branch must still
+                        # appear in History and open on Sale Detail.
+                        queryset = queryset.filter(
+                            Q(branch_id=int(branch_id)) | Q(branch_id__isnull=True)
+                        )
                     except (ValueError, TypeError):
                         queryset = queryset.none()
 
