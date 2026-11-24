@@ -6,6 +6,7 @@ import { CATALOG_FETCH_PAGE_SIZE, DEFAULT_PAGE_SIZE } from '../../config/paginat
 import ConfirmDialog from '../ConfirmDialog/ConfirmDialog';
 import SearchableSelect from '../Shared/SearchableSelect';
 import ExpenseForm from './ExpenseForm';
+import ReturnExpenseDialog from './ReturnExpenseDialog';
 import PeriodPills from '../Reports/PeriodPills';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
@@ -88,6 +89,8 @@ const Expenses = () => {
   const [editingExpense, setEditingExpense] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [notesExpense, setNotesExpense] = useState(null);
+  const [returning, setReturning] = useState(null);
+  const [returnBusy, setReturnBusy] = useState(false);
   const [totals, setTotals] = useState({
     total_amount: 0,
     expense_count: 0,
@@ -292,17 +295,16 @@ const Expenses = () => {
   };
 
   const handleDecideClaim = async (expense, decision) => {
-    let reason = '';
     if (decision === 'rejected') {
-      reason = window.prompt('Why are you returning this claim?') || '';
-      if (!reason.trim()) return;
+      setReturning(expense);
+      return;
     }
     try {
       await expensesAPI.decideClaim(expense.id, {
         decision,
-        rejection_reason: reason.trim(),
+        rejection_reason: '',
       });
-      toast.success(decision === 'approved' ? 'Claim approved.' : 'Claim returned.');
+      toast.success('Claim approved.');
       loadExpenses();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Could not decide this claim.');
@@ -363,15 +365,30 @@ const Expenses = () => {
     }
   };
 
-  const handleReject = async (id) => {
-    const reason = window.prompt('Why are you returning this expense to the person who submitted it?');
-    if (!reason || !reason.trim()) return;
+  const confirmReturn = async (reason) => {
+    if (!returning) return;
+    setReturnBusy(true);
     try {
-      await expensesAPI.reject(id, { rejection_reason: reason.trim() });
+      if (returning.is_claim) {
+        await expensesAPI.decideClaim(returning.id, {
+          decision: 'rejected',
+          rejection_reason: reason,
+        });
+        toast.success('Claim returned.');
+      } else {
+        await expensesAPI.reject(returning.id, { rejection_reason: reason });
+        toast.success(rejectionReturnedMessage('expense'));
+      }
+      setReturning(null);
       loadExpenses();
-      toast.success(rejectionReturnedMessage('expense'));
     } catch (error) {
-      toast.error('Could not return this expense: ' + (error.response?.data?.error || error.response?.data?.detail || error.message));
+      toast.error(
+        error.response?.data?.error
+          || error.response?.data?.detail
+          || 'Could not return this expense.'
+      );
+    } finally {
+      setReturnBusy(false);
     }
   };
 
@@ -690,7 +707,9 @@ const Expenses = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDecideClaim(expense, 'rejected')}
+                              data-testid={`claim-return-${expense.id}`}
+                              aria-label="Return claim"
+                              onClick={() => setReturning(expense)}
                               title="Return claim"
                             >
                               <X className="h-4 w-4 text-destructive" />
@@ -716,7 +735,9 @@ const Expenses = () => {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleReject(expense.id)}
+                              data-testid={`expense-return-${expense.id}`}
+                              aria-label="Return expense"
+                              onClick={() => setReturning(expense)}
                               title="Return to requester"
                             >
                               <X className="h-4 w-4 text-destructive" />
@@ -821,6 +842,16 @@ const Expenses = () => {
         confirmText="Void / correct"
         cancelText="Cancel"
         type="danger"
+      />
+
+      <ReturnExpenseDialog
+        open={Boolean(returning)}
+        expense={returning}
+        busy={returnBusy}
+        onOpenChange={(open) => {
+          if (!open && !returnBusy) setReturning(null);
+        }}
+        onConfirm={confirmReturn}
       />
 
       <Dialog

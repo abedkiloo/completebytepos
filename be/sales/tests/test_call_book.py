@@ -141,6 +141,39 @@ class CallBookUnitTests(SuperAdminAPITestCase):
         self.assertFalse(call_later_due('called', moment, moment))
         self.assertFalse(call_later_due('ask_later', None, moment))
 
+    def test_the_book_includes_general_customer_information(self):
+        shop = Customer.objects.create(
+            name='Info Shop',
+            phone='0718000077',
+            customer_code='INFO-1',
+            owner_name='Asha',
+            contact_person='Kamau',
+            email='shop@example.com',
+            address='Stall 4',
+            city='Nairobi',
+            county=DEFAULT_COUNTY,
+            sub_county=DEFAULT_SUB_COUNTY,
+            ward=DEFAULT_WARD,
+            engagement_tier='buyer',
+            typical_goods=['Zippers', '0718999999'],
+            last_purchased_at=timezone.make_aware(datetime(2026, 11, 1, 10, 0)),
+            tax_id='P051234567X',
+            notes='Private note 0718111222',
+            is_active=True,
+        )
+        book = build_call_book(today=MONDAY, scope='week', status='all', page_size=50)
+        row = next(item for item in book['results'] if item['customer_id'] == shop.id)
+        self.assertEqual(row['owner_name'], 'Asha')
+        self.assertEqual(row['contact_person'], 'Kamau')
+        self.assertEqual(row['customer_code'], 'INFO-1')
+        self.assertEqual(row['address'], 'Stall 4')
+        self.assertEqual(row['typical_goods'], ['Zippers', '0718999999'])
+        self.assertIn('2026-11-01', row['last_purchased_at'])
+        self.assertNotIn('tax_id', row)
+        self.assertNotIn('notes', row)
+        self.assertNotIn('wallet_balance', row)
+        self.assertNotIn('0718111222', str(row['owner_name']) + row['address'])
+
 
 class CallBookCorrectedTests(SuperAdminAPITestCase):
     """The book the shop described: week, ask later, Saturday, not-called first."""
@@ -490,6 +523,32 @@ class CallBookSecurityTests(SalesAPITestCase):
         self.assertEqual(blocked.status_code, status.HTTP_409_CONFLICT)
         self.assertNotIn(shop.phone, blocked.content.decode())
         self.assertEqual(own.status_code, status.HTTP_200_OK)
+
+    def test_selecting_the_next_customer_frees_the_previous_one(self):
+        first = _customer('First Shop', '0718000044')
+        second = _customer('Second Shop', '0718000045')
+        other = User.objects.create_user(username='call_book_next', password='x')
+        UserProfile.objects.create(
+            user=other,
+            role='cashier',
+            custom_role=Role.objects.get(name='Sales Personnel'),
+            is_active=True,
+        )
+        other_client = APIClient()
+        from rest_framework_simplejwt.tokens import RefreshToken
+        token = RefreshToken.for_user(other)
+        other_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            self.client.post(f'/api/sales/call-book/{first.id}/hold/')
+            moved = self.client.post(f'/api/sales/call-book/{second.id}/hold/')
+            still_taken = other_client.post(f'/api/sales/call-book/{second.id}/hold/')
+            now_free = other_client.post(f'/api/sales/call-book/{first.id}/hold/')
+        self.assertEqual(moved.status_code, status.HTTP_200_OK)
+        self.assertEqual(still_taken.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(now_free.status_code, status.HTTP_200_OK)
+        body = still_taken.content.decode() + now_free.content.decode()
+        self.assertNotIn(first.phone, body)
+        self.assertNotIn(second.phone, body)
 
     def test_delivery_driver_can_open_the_shared_book(self):
         ensure_permissions()

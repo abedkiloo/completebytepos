@@ -92,3 +92,38 @@ test('a manager approves a claim that is not theirs', async () => {
   }));
   expect(screen.queryByText('0711555019')).not.toBeInTheDocument();
 });
+
+test('returning a claim asks for a reason in a dialog', async () => {
+  asManager();
+  expensesAPI.list.mockResolvedValue({
+    data: {
+      count: 1,
+      results: [{
+        id: 9,
+        expense_number: 'EXP-1',
+        description: 'Matatu fare',
+        amount: '250.00',
+        status: 'pending',
+        is_claim: true,
+        created_by: 4,
+        created_by_name: 'ann',
+        expense_date: '2026-11-23',
+        category_include_in_trading_profit: true,
+        notes: '',
+      }],
+    },
+  });
+  render(<MemoryRouter><Expenses /></MemoryRouter>);
+  fireEvent.click(await screen.findByTestId('claim-return-9'));
+  expect(await screen.findByRole('heading', { name: 'Return this claim' })).toBeInTheDocument();
+  expect(screen.getByTestId('expense-return-confirm')).toBeDisabled();
+  fireEvent.change(screen.getByTestId('expense-return-reason'), {
+    target: { value: 'Bring the receipt' },
+  });
+  fireEvent.click(screen.getByTestId('expense-return-confirm'));
+  await waitFor(() => expect(expensesAPI.decideClaim).toHaveBeenCalledWith(9, {
+    decision: 'rejected',
+    rejection_reason: 'Bring the receipt',
+  }));
+  expect(screen.queryByText('0711555019')).not.toBeInTheDocument();
+});

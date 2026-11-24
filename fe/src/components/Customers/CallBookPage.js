@@ -18,9 +18,77 @@ import {
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 import { PageHeader, PageShell } from '../page';
 
 const EMPTY_PLAN_ROW = { weekday: 0, county: '', sub_county: '', ward: '' };
+
+/**
+ * Whether another person already has this customer.
+ *
+ * @param {object|null|undefined} row Call-book row. A missing hold is free.
+ * @returns {boolean} True when the hold belongs to someone else.
+ */
+function takenBySomeoneElse(row) {
+  return Boolean(row?.hold && !row.hold.held_by_me);
+}
+
+/**
+ * Customer type line, matching the customer page.
+ *
+ * @param {object|null} row Call-book row.
+ * @returns {string} At most 20 characters.
+ */
+function customerTypeLabel(row) {
+  if (!row) return '';
+  if (row.engagement_tier === 'prospect') return 'Registered only';
+  if (row.buyer_segment === 'dormant') return 'Dormant';
+  if (row.buyer_segment === 'at_risk') return 'Cooling off';
+  if (row.buyer_segment === 'new') return 'New buyer';
+  if (row.buyer_segment === 'champion') return 'Champion';
+  if (row.engagement_tier === 'buyer') return 'Existing';
+  return customerCategoryLabel(row.buyer_segment);
+}
+
+/**
+ * Rows for the customer information dialog.
+ *
+ * @param {object|null} row Call-book row. Phone is omitted when someone else holds them.
+ * @returns {Array<[string, string]>} Label and value pairs. Empty when the row is missing.
+ */
+function customerInformationRows(row) {
+  if (!row) return [];
+  const place = [row.ward, row.sub_county, row.county].filter(Boolean).join(', ') || row.city || '';
+  const goods = Array.isArray(row.typical_goods) ? row.typical_goods.filter(Boolean) : [];
+  const lastPurchase = row.last_purchased_at
+    ? new Date(row.last_purchased_at).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'Africa/Nairobi',
+    })
+    : '';
+  const rows = [
+    ['Phone', takenBySomeoneElse(row) ? 'Held by someone else' : (row.phone || 'No number')],
+    ['Customer type', customerTypeLabel(row)],
+    ['Location', place || 'Not recorded'],
+    ['Products of interest', goods.length ? goods.join(', ') : 'None recorded'],
+    ['Last purchase', lastPurchase || 'No purchase yet'],
+  ];
+  if (row.owner_name) rows.push(['Owner', row.owner_name]);
+  if (row.contact_person) rows.push(['Person to ask for', row.contact_person]);
+  if (row.address) rows.push(['Address', row.address]);
+  if (row.customer_code) rows.push(['Customer code', row.customer_code]);
+  if (row.email) rows.push(['Email', row.email]);
+  return rows;
+}
 const OUTCOME_ICON = {
   called: Check,
   ask_later: Clock,
@@ -44,6 +112,7 @@ export default function CallBookPage() {
   const [index, setIndex] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [infoRow, setInfoRow] = useState(null);
   const debouncedSearch = useDebouncedValue(search, 350);
   const bootDay = useRef(true);
   const canEditPlan = isManagerOrAdminFromStorage();
@@ -103,7 +172,38 @@ export default function CallBookPage() {
   const queue = searching ? results : remaining;
   const listed = Number.isFinite(Number(book?.count)) ? Number(book.count) : queue.length;
   const pageCount = Math.max(1, Math.ceil(listed / DEFAULT_PAGE_SIZE));
-  const current = queue[Math.min(index, Math.max(queue.length - 1, 0))] || null;
+  const currentIndex = Math.min(index, Math.max(queue.length - 1, 0));
+  const current = queue[currentIndex] || null;
+
+  useEffect(() => {
+    if (view !== 'queue' || !current || !takenBySomeoneElse(current)) return;
+    const next = queue.findIndex((row) => !takenBySomeoneElse(row));
+    if (next >= 0 && next !== currentIndex) setIndex(next);
+  }, [view, queue, current, currentIndex]);
+
+  useEffect(() => {
+    if (view !== 'queue' || !markingOpen || !current || takenBySomeoneElse(current)) return undefined;
+    if (current.hold?.held_by_me) return undefined;
+    let cancelled = false;
+    customersAPI.holdCall(current.customer_id).catch((error) => {
+      if (cancelled || error?.response?.status !== 409) return;
+      const holder = error?.response?.data?.error || 'Another staff member';
+      setBook((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          results: (prev.results || []).map((row) => (
+            row.customer_id === current.customer_id
+              ? { ...row, hold: { held_by: holder, held_by_me: false, expires_at: '' } }
+              : row
+          )),
+        };
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, markingOpen, current]);
 
   return (
     <PageShell>
@@ -148,8 +248,11 @@ export default function CallBookPage() {
           onDay={(next) => { setDay(next); setPage(1); setIndex(0); }}
           onPage={(next) => { setPage(next); setIndex(0); }}
           onOpen={(weekday) => { setDay(weekday); setPage(1); setIndex(0); setView('queue'); }}
+          onView={setInfoRow}
           onSelect={(customerId) => {
-            const at = queue.findIndex((row) => row.customer_id === customerId);
+            const row = queue.find((item) => item.customer_id === customerId);
+            if (takenBySomeoneElse(row)) return;
+            const at = queue.findIndex((item) => item.customer_id === customerId);
             setIndex(at >= 0 ? at : 0);
             setView('queue');
           }}
@@ -169,8 +272,15 @@ export default function CallBookPage() {
           )}
           onPrevious={() => setIndex((value) => Math.max(0, value - 1))}
           onSaved={() => load()}
+          onView={setInfoRow}
         />
       )}
+      <CustomerInformationDialog
+        row={infoRow}
+        onOpenChange={(open) => {
+          if (!open) setInfoRow(null);
+        }}
+      />
       {canEditPlan && plan && view === 'week' && (
         <PlanEditor
           plan={plan}
@@ -268,8 +378,9 @@ function Stat({ label, value, hint, tone = 'text-foreground' }) {
  * @param {Function} props.onPage Selects a page, 1 through pageCount.
  * @param {Function} props.onOpen Opens that day's queue.
  * @param {Function} props.onSelect Opens the call form for one customer id.
+ * @param {Function} props.onView Opens that customer's general information.
  */
-function WeekPlan({ summary, day, rows, page, pageCount, total, onDay, onPage, onOpen, onSelect }) {
+function WeekPlan({ summary, day, rows, page, pageCount, total, onDay, onPage, onOpen, onSelect, onView }) {
   const days = summary.days || WEEKDAY_LABELS.map((label, weekday) => ({
     weekday,
     callable: 0,
@@ -315,23 +426,37 @@ function WeekPlan({ summary, day, rows, page, pageCount, total, onDay, onPage, o
       </h3>
       {rows.length === 0 && <p className="text-sm text-muted-foreground">No customers on this day.</p>}
       <ul className="space-y-2">
-        {rows.map((row) => (
-          <li key={row.customer_id} className="border-b border-border">
+        {rows.map((row) => {
+          const taken = takenBySomeoneElse(row);
+          return (
+          <li key={row.customer_id} className="flex items-center justify-between gap-2 border-b border-border py-2">
             <button
               type="button"
-              className="flex w-full items-center justify-between gap-2 py-2 text-left"
+              className="min-w-0 flex-1 text-left"
+              aria-label={`View information for ${row.name}`}
+              onClick={() => onView(row)}
+            >
+              <span className="block font-medium">{row.name}</span>
+              <span className="block text-xs text-muted-foreground">
+                {taken ? `${row.hold.held_by} has this customer` : 'View information'}
+              </span>
+            </button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={taken}
+              aria-label={taken ? `${row.hold.held_by} has ${row.name}` : `Open to record the call for ${row.name}`}
               onClick={() => onSelect(row.customer_id)}
             >
-              <span>
-                <span className="block font-medium">{row.name}</span>
-                <span className="block text-xs text-muted-foreground">Open to record the call</span>
-              </span>
-              <Badge variant={row.called_this_week ? outcomeTone(row.outcome) : 'destructive'}>
-                {row.called_this_week ? outcomeLabel(row.outcome) : 'Pending'}
-              </Badge>
-            </button>
+              {taken ? 'Blocked' : 'Call'}
+            </Button>
+            <Badge variant={row.called_this_week ? outcomeTone(row.outcome) : 'destructive'}>
+              {row.called_this_week ? outcomeLabel(row.outcome) : 'Pending'}
+            </Badge>
           </li>
-        ))}
+          );
+        })}
       </ul>
       {total > 0 && (
         <div className="flex items-center justify-between gap-2">
@@ -375,8 +500,9 @@ function outcomeTone(outcome) {
  * @param {string} [props.dayPlaces] Sub-counties on this day, or empty.
  * @param {Function} props.onPrevious Moves to the previous remaining customer.
  * @param {Function} props.onSaved Reloads after a record is saved.
+ * @param {Function} props.onView Opens this customer's general information.
  */
-function Workspace({ summary, current, position, total, markingOpen, dayLabel, dayPlaces = '', onPrevious, onSaved }) {
+function Workspace({ summary, current, position, total, markingOpen, dayLabel, dayPlaces = '', onPrevious, onSaved, onView }) {
   return (
     <section className="space-y-4 rounded-md border border-border p-3" data-testid="call-workspace">
       <div className="flex items-start justify-between gap-2">
@@ -407,6 +533,7 @@ function Workspace({ summary, current, position, total, markingOpen, dayLabel, d
           canGoBack={position > 1}
           onPrevious={onPrevious}
           onSaved={onSaved}
+          onView={onView}
         />
       )}
     </section>
@@ -422,8 +549,9 @@ function Workspace({ summary, current, position, total, markingOpen, dayLabel, d
  * @param {boolean} props.canGoBack Whether a previous customer is still in the queue.
  * @param {Function} props.onPrevious Goes back one customer.
  * @param {Function} props.onSaved Reloads the book.
+ * @param {Function} props.onView Opens this customer's general information.
  */
-function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSaved }) {
+function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSaved, onView }) {
   const [outcome, setOutcome] = useState('called');
   const [summary, setSummary] = useState(row.previous_summary || '');
   const [followUp, setFollowUp] = useState('');
@@ -470,8 +598,17 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
 
   return (
     <div data-testid={`call-row-${row.customer_id}`}>
-      <h2 className="text-xl font-semibold">{row.name}</h2>
-      <p className="text-lg tabular-nums">{row.phone}</p>
+      <button
+        type="button"
+        className="text-left"
+        aria-label={`View information for ${row.name}`}
+        onClick={() => onView(row)}
+      >
+        <h2 className="text-xl font-semibold">{row.name}</h2>
+      </button>
+      {!takenBySomeoneElse(row) && (
+        <p className="text-lg tabular-nums">{row.phone}</p>
+      )}
       {row.call_later_due && (
         <p className="mt-2 text-sm font-medium text-warning">The time to call again has been reached.</p>
       )}
@@ -498,14 +635,18 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
       {row.previous_summary && !row.called_this_week && (
         <p className="mt-3 text-sm">Last note: {row.previous_summary}</p>
       )}
-      {row.hold && !row.hold.held_by_me && (
-        <p className="mt-2 text-xs text-muted-foreground">{row.hold.held_by} is on this customer now.</p>
+      {takenBySomeoneElse(row) && (
+        <p className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm">
+          {row.hold.held_by} has this customer.
+        </p>
       )}
+      {!takenBySomeoneElse(row) && (
       <Button type="button" variant="secondary" className="mt-4 w-full" onClick={copyNumber}>
         <Copy className="h-4 w-4" aria-hidden />
         Copy phone number
       </Button>
-      {markingOpen && (
+      )}
+      {markingOpen && !takenBySomeoneElse(row) && (
         <>
           <p className="mb-2 mt-4 text-sm font-medium">Record call outcome</p>
           <div className="grid gap-2 sm:grid-cols-2">
@@ -685,5 +826,38 @@ function PlanEditor({ plan, onChange, onSaved }) {
         </Button>
       </div>
     </section>
+  );
+}
+
+/**
+ * General customer information, the same facts as the customer page.
+ *
+ * @param {object|null} props.row Call-book row, or null when the dialog is closed.
+ * @param {Function} props.onOpenChange Closes the dialog when passed false.
+ */
+function CustomerInformationDialog({ row, onOpenChange }) {
+  const facts = customerInformationRows(row);
+  return (
+    <Dialog open={Boolean(row)} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Customer information</DialogTitle>
+          <DialogDescription>{row?.name || 'Customer'}</DialogDescription>
+        </DialogHeader>
+        <table className="w-full text-sm" data-testid="call-customer-info">
+          <tbody>
+            {facts.map(([field, value]) => (
+              <tr key={field} className="border-t border-border">
+                <td className="py-2 pr-3 text-muted-foreground">{field}</td>
+                <td className="py-2">{value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <DialogFooter>
+          <Button type="button" onClick={() => onOpenChange(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

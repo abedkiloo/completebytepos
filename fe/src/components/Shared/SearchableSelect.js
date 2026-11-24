@@ -2,6 +2,19 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from
 import { createPortal } from 'react-dom';
 import { cn } from '../../lib/cn';
 
+/**
+ * Whether this control is inside a modal.
+ *
+ * A menu portaled to the page cannot be typed in, because the dialog keeps
+ * focus and pointer events. The menu stays in the dialog instead.
+ *
+ * @param {HTMLElement|null} node The select trigger.
+ * @returns {boolean} True when a dialog or alert dialog is an ancestor.
+ */
+function isInsideDialog(node) {
+  return Boolean(node?.closest?.('[role="dialog"], [role="alertdialog"]'));
+}
+
 const SearchableSelect = ({
   value,
   onChange,
@@ -24,6 +37,7 @@ const SearchableSelect = ({
   const triggerRef = useRef(null);
   const menuRef = useRef(null);
   const inputRef = useRef(null);
+  const inlineRef = useRef(false);
 
   const updateMenuPosition = useCallback(() => {
     const trigger = triggerRef.current;
@@ -114,17 +128,21 @@ const SearchableSelect = ({
 
   const handleToggle = () => {
     if (!disabled) {
+      if (!isOpen) {
+        inlineRef.current = isInsideDialog(triggerRef.current);
+      }
       setIsOpen(!isOpen);
     }
   };
 
-  const menu = isOpen && menuStyle
-    ? createPortal(
+  const menuBody = (
         <div
           ref={menuRef}
           data-testid="searchable-select-menu"
-          style={menuStyle}
-          className="app-scroll-region flex max-h-[300px] flex-col rounded-md border border-border bg-background shadow-lg animate-in fade-in-0 zoom-in-95"
+          style={inlineRef.current ? { pointerEvents: 'auto' } : menuStyle}
+          className={inlineRef.current
+            ? 'z-20 mt-1 flex max-h-72 min-h-0 flex-col overflow-hidden rounded-md border border-border bg-background shadow-lg'
+            : 'app-scroll-region flex max-h-[300px] flex-col rounded-md border border-border bg-background shadow-lg'}
         >
           {searchable && (
             <div className="border-b border-border p-2">
@@ -144,7 +162,10 @@ const SearchableSelect = ({
             </div>
           )}
 
-          <div className="app-scroll-region max-h-[200px] flex-1">
+          <div
+            className="min-h-0 overflow-y-auto overscroll-contain"
+            style={{ maxHeight: '13rem' }}
+          >
             {filteredOptions.length > 0 ? (
               filteredOptions.map((option, index) => {
                 const optionValue = option.id ?? option.value;
@@ -197,10 +218,16 @@ const SearchableSelect = ({
               <span>{addNewLabel}</span>
             </button>
           )}
-        </div>,
-        document.body
-      )
-    : null;
+        </div>
+  );
+
+  const menu = !isOpen
+    ? null
+    : inlineRef.current
+      ? menuBody
+      : menuStyle
+        ? createPortal(menuBody, document.body)
+        : null;
 
   return (
     <div className={cn('relative w-full', className)} ref={rootRef}>

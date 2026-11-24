@@ -193,7 +193,7 @@ describe('CallBookPage', () => {
     await screen.findByText('Not Called Shop');
     await userEvent.click(screen.getByRole('tab', { name: 'Weekly schedule' }));
     expect(screen.queryByRole('button', { name: 'Save record' })).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: /Not Called Shop/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Open to record the call for Not Called Shop' }));
     expect(screen.getByRole('button', { name: 'Save record' })).toBeInTheDocument();
     expect(screen.getByText('0718000001')).toBeInTheDocument();
   });
@@ -242,5 +242,67 @@ describe('CallBookPage', () => {
       page: 2,
       page_size: 10,
     }));
+  });
+
+  test('a customer someone else has is skipped and cannot be opened', async () => {
+    customersAPI.callBook.mockResolvedValue({
+      data: {
+        ...book,
+        results: [
+          {
+            ...book.results[0],
+            hold: { held_by: 'Mercy', held_by_me: false, expires_at: '2026-11-24T10:00:00' },
+          },
+          {
+            ...book.results[0],
+            customer_id: 3,
+            name: 'Free Shop',
+            phone: '0718000003',
+            previous_summary: '',
+            hold: null,
+          },
+        ],
+      },
+    });
+    render(<CallBookPage />);
+    expect(await screen.findByRole('heading', { name: 'Free Shop' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Not Called Shop' })).not.toBeInTheDocument();
+    expect(screen.queryByText('0718000001')).not.toBeInTheDocument();
+    await waitFor(() => expect(customersAPI.holdCall).toHaveBeenCalledWith(3));
+    expect(customersAPI.holdCall).not.toHaveBeenCalledWith(1);
+    await userEvent.click(screen.getByRole('tab', { name: 'Weekly schedule' }));
+    const blocked = screen.getByRole('button', { name: 'Mercy has Not Called Shop' });
+    expect(blocked).toBeDisabled();
+    expect(screen.getByText('Mercy has this customer')).toBeInTheDocument();
+  });
+
+  test('clicking a customer shows their general information', async () => {
+    customersAPI.callBook.mockResolvedValue({
+      data: {
+        ...book,
+        results: [{
+          ...book.results[0],
+          owner_name: 'Asha',
+          contact_person: 'Kamau',
+          address: 'Stall 4',
+          customer_code: 'INFO-1',
+          engagement_tier: 'buyer',
+          buyer_segment: 'at_risk',
+          typical_goods: ['Zippers'],
+          last_purchased_at: '2026-11-01T10:00:00+03:00',
+        }],
+      },
+    });
+    render(<CallBookPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'View information for Not Called Shop' }));
+    expect(await screen.findByRole('heading', { name: 'Customer information' })).toBeInTheDocument();
+    const info = screen.getByTestId('call-customer-info');
+    expect(info).toHaveTextContent('Asha');
+    expect(info).toHaveTextContent('Kamau');
+    expect(info).toHaveTextContent('Stall 4');
+    expect(info).toHaveTextContent('Zippers');
+    expect(info).toHaveTextContent('Cooling off');
+    expect(info).toHaveTextContent('0718000001');
+    expect(info).not.toHaveTextContent('0718999888');
   });
 });

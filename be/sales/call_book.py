@@ -399,6 +399,7 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             'id', 'name', 'phone', 'owner_name', 'contact_person',
             'customer_code', 'email', 'tax_id', 'county', 'sub_county',
             'ward', 'city', 'address', 'latitude', 'longitude', 'buyer_segment',
+            'engagement_tier', 'typical_goods', 'last_purchased_at',
         )
     )
     assignments = assign_sub_county_weekdays(sub_county_call_groups(customers))
@@ -457,6 +458,7 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             'sub_county': customer.sub_county or '',
             'ward': customer.ward or '',
             'buyer_segment': customer.buyer_segment or 'none',
+            **_profile_fields(customer),
             'weekday': weekday,
             'called_this_week': call is not None,
             'outcome': call.outcome if call else '',
@@ -702,6 +704,54 @@ def _due_moment(call, prior):
     return None
 
 
+def _clip(value, limit: int) -> str:
+    """
+    Short text for a call-book field.
+
+    Args:
+        value: Any stored value. None becomes an empty string.
+        limit: Maximum characters, 1–300.
+
+    Returns:
+        str: Trimmed text, at most ``limit`` characters.
+    """
+    return str(value or '').strip()[:limit]
+
+
+def _profile_fields(customer) -> dict:
+    """
+    General customer information for the call centre.
+
+    Args:
+        customer: Active customer. Owner, contact, code, email, address,
+            city, tier, goods, and last purchase are read. Tax id, notes,
+            and balances are left out.
+
+    Returns:
+        dict: Clipped strings. ``typical_goods`` is 0–12 names, each at
+        most 80 characters. ``last_purchased_at`` is an ISO time or empty.
+        No writes.
+    """
+    raw_goods = customer.typical_goods if isinstance(customer.typical_goods, list) else []
+    goods = []
+    for item in raw_goods[:12]:
+        text = _clip(item, 80)
+        if text:
+            goods.append(text)
+    last = customer.last_purchased_at
+    return {
+        'owner_name': _clip(customer.owner_name, 200),
+        'contact_person': _clip(customer.contact_person, 200),
+        'customer_code': _clip(customer.customer_code, 50),
+        'email': _clip(customer.email, 254),
+        'address': _clip(customer.address, 300),
+        'city': _clip(customer.city, 100),
+        'engagement_tier': _clip(customer.engagement_tier, 20) or 'prospect',
+        'typical_goods': goods,
+        'last_purchased_at': last.isoformat() if last else '',
+    }
+
+
 def _hold_payload(hold, viewer_id: int | None) -> dict:
     """
     Describe an active hold without the customer's phone.
@@ -815,7 +865,8 @@ def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple
     Returns:
         tuple: ``(code, payload)`` with the same codes as ``mark_called``
         plus ``ok`` carrying ``expires_at``. No phone number in the payload.
-        Side effect on ``ok``: creates or refreshes one ``CallHold``.
+        Side effect on ``ok``: this user holds this customer and their
+        earlier holds are released. One person blocks one customer.
     """
     day = today or nairobi_today()
     if not is_call_day(day):
@@ -838,6 +889,7 @@ def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple
             return 'held', {
                 'error': 'Another staff member is calling this customer. Try again in a few minutes.',
             }
+        CallHold.objects.filter(held_by=user).exclude(customer=customer).delete()
         expires = now + timedelta(minutes=minutes)
         if hold is None:
             CallHold.objects.create(customer=customer, held_by=user, expires_at=expires)

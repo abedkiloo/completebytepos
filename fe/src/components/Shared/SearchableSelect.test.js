@@ -161,4 +161,30 @@ describe('SearchableSelect empty option values', () => {
     expect(menu.parentElement).toBe(document.body);
     expect(within(menu).getByText('Everyone')).toBeInTheDocument();
   });
+
+  it('keeps the search box inside a dialog so it can be typed in', () => {
+    const onSearch = jest.fn();
+    const { container } = render(
+      <div role="dialog">
+        <SearchableSelect
+          name="customer"
+          value=""
+          onChange={jest.fn()}
+          onSearchTermChange={onSearch}
+          options={[{ id: 4, name: 'Kamau' }]}
+          placeholder="Search customer…"
+        />
+      </div>
+    );
+    openMenu(container);
+    const menu = screen.getByTestId('searchable-select-menu');
+    expect(screen.getByRole('dialog').contains(menu)).toBe(true);
+    expect(menu.parentElement).not.toBe(document.body);
+    fireEvent.change(screen.getByPlaceholderText('Search...'), { target: { value: 'Kam' } });
+    expect(onSearch).toHaveBeenCalledWith('Kam');
+    expect(within(menu).getByText('Kamau')).toBeInTheDocument();
+    const list = within(menu).getByText('Kamau').parentElement;
+    expect(list.style.maxHeight).toBe('13rem');
+    expect(list.className).toContain('overflow-y-auto');
+  });
 });

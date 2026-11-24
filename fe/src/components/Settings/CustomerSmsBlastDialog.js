@@ -245,10 +245,10 @@ export default function CustomerSmsBlastDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-3xl"
+        className="flex max-h-[calc(100dvh-1.5rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:p-0"
         description="Send any SMS template to all registered customers with a valid phone, or to one."
       >
-        <DialogHeader>
+        <DialogHeader className="shrink-0 px-4 pt-4 sm:px-6">
           <DialogTitle className="flex items-center gap-2">
             <MessageSquareText className="h-5 w-5" />
             Send SMS to customers
@@ -260,7 +260,7 @@ export default function CustomerSmsBlastDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="dialog-form-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="text-sm font-medium">Message</label>
@@ -310,7 +310,7 @@ export default function CustomerSmsBlastDialog({
                 <SearchableSelect
                   value={oneCustomerId}
                   onChange={(e) => setOneCustomerId(e.target.value || '')}
-                  options={[{ id: '', name: 'Search customer…' }, ...customerOptions]}
+                  options={customerOptions}
                   placeholder="Search customer…"
                   onSearchTermChange={(term) => loadCustomerOptions(term)}
                 />
@@ -402,7 +402,7 @@ export default function CustomerSmsBlastDialog({
           </div>
 
           {scope === 'all' ? (
-            <div className="max-h-64 overflow-auto rounded-md border">
+            <div className="max-h-64 min-h-0 overflow-y-auto overscroll-contain rounded-md border">
               <DataTable>
                 <DataTableHeader>
                   <DataTableRow>
@@ -458,7 +458,7 @@ export default function CustomerSmsBlastDialog({
           ) : null}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 border-t border-border px-4 py-3 sm:px-6">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

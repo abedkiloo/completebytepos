@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { ClipboardCheck, Loader2, Check, X, ChevronRight } from 'lucide-react';
 import { expensesAPI, pendingChangesAPI } from '../../services/api';
+import ReturnExpenseDialog from '../Expenses/ReturnExpenseDialog';
 import { PageShell, PageHeader, PageLoading } from '../page';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
@@ -327,7 +328,6 @@ function ExpenseReviewActions({ expense, settings, onResolved, onClose }) {
   const [busy, setBusy] = useState(false);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [showReject, setShowReject] = useState(false);
-  const [rejectReason, setRejectReason] = useState('');
   const canApprove = canApproveFinancialRecord(expense, settings, undefined, 'expenses');
   const expenseDates = [expense.expense_date, expense.created_at];
   const adminOnly = pastDatedBlocksUser(expenseDates);
@@ -352,15 +352,12 @@ function ExpenseReviewActions({ expense, settings, onResolved, onClose }) {
     }
   };
 
-  const reject = async () => {
-    if (!rejectReason.trim()) {
-      toast.warning('Please say why you are returning this expense');
-      return;
-    }
+  const reject = async (reason) => {
     setBusy(true);
     try {
-      await expensesAPI.reject(expense.id, { rejection_reason: rejectReason.trim() });
+      await expensesAPI.reject(expense.id, { rejection_reason: reason.trim() });
       toast.success(backfillRejectionSuccessMessage('expense'));
+      setShowReject(false);
       onClose();
       onResolved();
       dispatchNavBadgesRefresh();
@@ -387,25 +384,7 @@ function ExpenseReviewActions({ expense, settings, onResolved, onClose }) {
 
   return (
     <>
-      {showReject ? (
-        <div className="w-full space-y-2">
-          <Label>Why are you returning this expense?</Label>
-          <Input
-            value={rejectReason}
-            onChange={(e) => setRejectReason(e.target.value)}
-            placeholder="e.g. Missing receipt"
-          />
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="destructive" size="sm" onClick={reject} disabled={busy}>
-              Return to requester
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setShowReject(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" onClick={() => setShowApproveConfirm(true)} disabled={busy}>
             {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
             Approve
@@ -421,8 +400,16 @@ function ExpenseReviewActions({ expense, settings, onResolved, onClose }) {
             Reject
           </Button>
           <HelpHint actionKey="reject_change" />
-        </div>
-      )}
+      </div>
+      <ReturnExpenseDialog
+        open={showReject}
+        expense={expense}
+        busy={busy}
+        onOpenChange={(open) => {
+          if (!open && !busy) setShowReject(false);
+        }}
+        onConfirm={reject}
+      />
 
       <CommitConfirm
         open={showApproveConfirm}
