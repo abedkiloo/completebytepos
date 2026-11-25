@@ -199,6 +199,20 @@ def gated_report_action(action_name):
 
 class ReportViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated, REPORTS_PERMS]
+    # Protect aggregates under load; sale checkout is a different viewset.
+    throttle_classes = []
+
+    def get_throttles(self):
+        """
+        Apply report-scoped throttle without touching POS sale writes.
+
+        Returns:
+            List of throttle instances (0–2). Empty when ``THROTTLE_REPORTS_RATE``
+            is effectively unused; normally one ``ReportRateThrottle``.
+        """
+        from accounts.throttles import ReportRateThrottle
+
+        return [ReportRateThrottle()]
 
     @staticmethod
     def _feature_disabled_response(feature_label: str):
@@ -276,10 +290,12 @@ class ReportViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'])
     @gated_report_action('products')
     def products(self, request):
-        """Product sales report.
+        """Product sales / profitability report.
 
         Full ranked list in ``products``. ``top`` is the first ``limit`` rows
-        (default 10, max 50) for charts.
+        (default 10, max 50) for charts. Query ``sort`` =
+        ``revenue`` (default) | ``quantity`` | ``gross_profit`` | ``margin_pct``
+        ranks which goods earned more for the business.
         """
         date_from, date_to = request_date_bounds(request)
 
@@ -289,52 +305,21 @@ class ReportViewSet(viewsets.ViewSet):
             queryset = queryset.filter(sale__occurred_at__gte=date_from)
         if date_to:
             queryset = queryset.filter(sale__occurred_at__lte=date_to)
-        
-        from django.db.models import DecimalField, ExpressionWrapper, F, Value
-        from django.db.models.functions import Coalesce
 
-        _dec = DecimalField(max_digits=14, decimal_places=2)
-        _zero = Value(0, output_field=_dec)
-        cogs_expr = ExpressionWrapper(
-            F('quantity') * Coalesce(F('unit_cost'), _zero),
-            output_field=_dec,
-        )
-        product_sales = queryset.values(
-            'product__id',
-            'product__name',
-            'product__sku',
-            'product__category__name',
-        ).annotate(
-            quantity_sold=Sum('quantity'),
-            revenue=Sum('subtotal'),
-            avg_price=Sum('subtotal') / Sum('quantity'),
-            cogs=Sum(cogs_expr),
-        ).order_by('-revenue')
+        from reports.product_profitability import build_product_profitability_rows
 
         limit = _parse_top_limit(request.query_params.get('limit'), default=10)
-        rows = []
-        for row in product_sales:
-            qty = float(row['quantity_sold'] or 0)
-            revenue = float(row['revenue'] or 0)
-            cogs = float(row['cogs'] or 0)
-            avg_unit_cost = round(cogs / qty, 4) if qty else None
-            rows.append(
-                {
-                    'product__id': row['product__id'],
-                    'product__name': row['product__name'],
-                    'product__sku': row['product__sku'],
-                    'product__category__name': row['product__category__name'],
-                    'quantity_sold': row['quantity_sold'],
-                    'revenue': row['revenue'],
-                    'avg_price': row['avg_price'],
-                    'cogs': cogs,
-                    'avg_unit_cost': avg_unit_cost,
-                    'gross_profit': round(revenue - cogs, 2),
-                }
-            )
+        sort = request.query_params.get('sort') or 'revenue'
+        rows, sort_key = build_product_profitability_rows(
+            queryset,
+            sort=sort,
+            limit=None,
+            hub_keys=False,
+        )
 
         return Response({
             'limit': limit,
+            'sort': sort_key,
             'top': rows[:limit],
             'products': rows,
         })
@@ -922,19 +907,21 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('product_trends')
     def product_trends(self, request):
         """
-        Month or quarter sales and receiving for one product.
+        Month or quarter sales and receiving for one product (optional multi-SKU).
 
         Query params:
             product_id: required positive product id.
             grain: ``month`` (default) or ``quarter``.
             months: 1–24 calendar months when grain is month (default 12).
             quarters: 1–8 calendar quarters when grain is quarter (default 4).
+            end: optional window end — ``YYYY-MM`` or ``YYYY-Qn`` (not only “now”).
+            compare_ids: optional comma-separated peer product ids (max 4).
             variant_id: optional positive variant id (single-variant focus).
             include_variants: ``0``/``false`` to skip variant compare payload.
 
         Returns:
-            Response: period series, optional variant compare, channel mix,
-            and summary. 400 when product_id is missing or invalid.
+            Response: period series, optional variant / product compare, insights,
+            channel mix, and summary. 400 when product_id / end is invalid.
         """
         from products.models import Product
         from reports.product_trends import build_product_trends
@@ -975,6 +962,22 @@ class ReportViewSet(viewsets.ViewSet):
                 quarters = 4
         include_raw = (request.query_params.get('include_variants') or '1').strip().lower()
         include_variants = include_raw not in ('0', 'false', 'no', 'off')
+        end = request.query_params.get('end') or None
+        compare_ids = request.query_params.get('compare_ids') or None
+        from django.conf import settings as dj_settings
+        from django.core.cache import cache
+
+        ttl = int(getattr(dj_settings, 'REPORT_CACHE_SECONDS', 0) or 0)
+        cache_key = None
+        if ttl > 0:
+            # Trends payload has no per-user cost fields; safe to share briefly.
+            cache_key = (
+                f"product_trends:v1:{product_id}:{grain}:{months}:{quarters}:"
+                f"{variant_id}:{int(include_variants)}:{end}:{compare_ids}"
+            )[:220]
+            cached = cache.get(cache_key)
+            if isinstance(cached, dict) and cached.get('product_id') == product_id:
+                return Response(cached)
         try:
             payload = build_product_trends(
                 product_id=product_id,
@@ -983,21 +986,25 @@ class ReportViewSet(viewsets.ViewSet):
                 grain=grain,
                 variant_id=variant_id,
                 include_variants=include_variants,
+                end=end,
+                compare_ids=compare_ids,
             )
         except ValueError as exc:
             return Response({'error': str(exc)[:200]}, status=status.HTTP_400_BAD_REQUEST)
         product = Product.objects.filter(pk=product_id).only('id', 'name', 'sku').first()
         payload['name'] = (product.name if product else '')[:200]
         payload['sku'] = (product.sku if product and product.sku else '')[:100]
+        if cache_key and ttl > 0:
+            cache.set(cache_key, payload, min(ttl, 120))
         return Response(payload)
 
     @action(detail=False, methods=['get'])
     @gated_report_action('top_products')
     def top_products(self, request):
-        """Best-selling products in the chosen period.
+        """Best-selling / most profitable products in the chosen period.
 
-        Returns top N (default 10, max 50 via ``limit``) by quantity + revenue,
-        ready for a horizontal bar chart.
+        Returns top N (default 10, max 50 via ``limit``). Query ``sort`` =
+        ``quantity`` (default) | ``revenue`` | ``gross_profit`` | ``margin_pct``.
         """
         start, end, label = resolve_period(request)
         limit = _parse_top_limit(request.query_params.get('limit'), default=10)
@@ -1007,49 +1014,20 @@ class ReportViewSet(viewsets.ViewSet):
         if end:
             qs = qs.filter(sale__occurred_at__lte=end)
 
-        from django.db.models import DecimalField, ExpressionWrapper, F, Value
-        from django.db.models.functions import Coalesce
+        from reports.product_profitability import build_product_profitability_rows
 
-        _dec = DecimalField(max_digits=14, decimal_places=2)
-        _zero = Value(0, output_field=_dec)
-        cogs_expr = ExpressionWrapper(
-            F('quantity') * Coalesce(F('unit_cost'), _zero),
-            output_field=_dec,
+        sort = request.query_params.get('sort') or 'quantity'
+        items, sort_key = build_product_profitability_rows(
+            qs,
+            sort=sort,
+            limit=limit,
+            hub_keys=True,
         )
-        rows = list(
-            qs.values('product__id', 'product__name', 'product__sku', 'product__category__name')
-            .annotate(
-                quantity_sold=Sum('quantity'),
-                revenue=Sum('subtotal'),
-                line_count=Count('id'),
-                cogs=Sum(cogs_expr),
-            )
-            .order_by('-quantity_sold')[:limit]
-        )
-
-        items = []
-        for r in rows:
-            qty = int(r['quantity_sold'] or 0)
-            revenue = float(r['revenue'] or 0)
-            cogs = float(r['cogs'] or 0)
-            items.append(
-                {
-                    'product_id': r['product__id'],
-                    'name': r['product__name'] or '(unnamed product)',
-                    'sku': r['product__sku'] or '',
-                    'category': r['product__category__name'] or 'Uncategorised',
-                    'quantity_sold': qty,
-                    'revenue': revenue,
-                    'line_count': r['line_count'] or 0,
-                    'cogs': cogs,
-                    'avg_unit_cost': round(cogs / qty, 4) if qty else None,
-                    'gross_profit': round(revenue - cogs, 2),
-                }
-            )
 
         return Response({
             'period': label,
             'limit': limit,
+            'sort': sort_key,
             'items': items,
         })
 

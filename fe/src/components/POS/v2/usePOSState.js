@@ -244,7 +244,8 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
 
   const loadCustomers = useCallback(async () => {
     try {
-      const res = await customersAPI.list({ is_active: true, page_size: 1000 });
+      // Cap matches API max page size; CustomerPicker searches for the rest.
+      const res = await customersAPI.list({ is_active: true, page_size: 200 });
       const data = res.data.results || res.data || [];
       const list = Array.isArray(data) ? data : [];
       // A virtual walk-in customer keeps the UX simple (one customer field,

@@ -136,7 +136,7 @@ const Invoices = () => {
     try {
       // Load all active customers - request a large page size to get all customers
       // The API is paginated (default 10 per page), so we need to request more
-      const response = await customersAPI.list({ is_active: 'true', page_size: 1000 });
+      const response = await customersAPI.list({ is_active: 'true', page_size: 200 });
       const customersData = response.data.results || response.data || [];
       setCustomers(Array.isArray(customersData) ? customersData : []);
     } catch (error) {
@@ -154,7 +154,7 @@ const Invoices = () => {
 
   const loadProducts = async () => {
     try {
-      const response = await productsAPI.list({ is_active: 'true', page_size: 1000 });
+      const response = await productsAPI.list({ is_active: 'true', page_size: 200 });
       const productsData = response.data.results || response.data || [];
       setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (error) {

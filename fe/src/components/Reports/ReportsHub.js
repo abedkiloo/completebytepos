@@ -35,6 +35,7 @@ import {
   reportsEnableCashReports,
   reportsEnableFinancialReports,
   reportsProductTrendsEnabled,
+  userMayViewProductProfitability,
   reportsShowDiscount,
   reportsShowTax,
   reportsShowLegacyCatalog,
@@ -272,9 +273,13 @@ function SalesOverviewTile({ period, onOpen, showDiscount, showTax }) {
   );
 }
 
-function TopProductsTile({ period, onOpen }) {
+function TopProductsTile({ period, onOpen, showProfitability }) {
   const [limit, setLimit] = useState(DEFAULT_TOP_PRODUCTS);
-  const { data, loading, error } = useReport(reportsAPI.topProducts, period, { limit });
+  const [sort, setSort] = useState(showProfitability ? 'gross_profit' : 'quantity');
+  const { data, loading, error } = useReport(reportsAPI.topProducts, period, {
+    limit,
+    sort,
+  });
 
   const items = data?.items || [];
   const chartData = useMemo(
@@ -283,21 +288,55 @@ function TopProductsTile({ period, onOpen }) {
         name: row.name?.length > 18 ? `${row.name.slice(0, 18)}…` : row.name,
         quantity: row.quantity_sold,
         revenue: row.revenue,
+        gross_profit: row.gross_profit,
+        margin_pct: row.margin_pct,
       })),
     [items]
   );
   const barHeight = chartHeight(Math.max(0, (items.length - 4) * 22));
+  const barKey =
+    sort === 'gross_profit'
+      ? 'gross_profit'
+      : sort === 'revenue'
+        ? 'revenue'
+        : sort === 'margin_pct'
+          ? 'margin_pct'
+          : 'quantity';
 
   return (
     <ReportCard
       icon={ShoppingCart}
       title="Top products"
-      description="Best-selling SKUs by quantity moved — change how many to show."
+      description={
+        showProfitability
+          ? 'Rank SKUs by profit or margin to see which goods earn more.'
+          : 'Best-selling SKUs by quantity moved — change how many to show.'
+      }
       onOpen={onOpen}
       exportSlug="top-products"
-      exportParams={{ period, limit }}
+      exportParams={{ period, limit, sort }}
     >
-      <div className="mb-2 flex items-center justify-end gap-2 text-xs">
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-2 text-xs">
+        {showProfitability ? (
+          <>
+            <label htmlFor="hub-top-products-sort" className="text-muted-foreground">
+              Rank by
+            </label>
+            <select
+              id="hub-top-products-sort"
+              aria-label="Top products sort"
+              data-testid="hub-top-products-sort"
+              className="h-8 rounded-md border border-input bg-background px-2"
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+            >
+              <option value="gross_profit">Gross profit</option>
+              <option value="margin_pct">Margin %</option>
+              <option value="revenue">Revenue</option>
+              <option value="quantity">Units sold</option>
+            </select>
+          </>
+        ) : null}
         <label htmlFor="hub-top-products-limit" className="text-muted-foreground">
           Show top
         </label>
@@ -341,15 +380,26 @@ function TopProductsTile({ period, onOpen }) {
                 width={120}
               />
               <Tooltip
-                formatter={(value, name) =>
-                  name === 'revenue'
-                    ? [formatCurrency(value), 'Revenue']
-                    : [formatNumber(value), 'Units']
-                }
+                formatter={(value, name) => {
+                  if (name === 'revenue' || name === 'gross_profit') {
+                    return [
+                      formatCurrency(value),
+                      name === 'gross_profit' ? 'Gross profit' : 'Revenue',
+                    ];
+                  }
+                  if (name === 'margin_pct') {
+                    return [`${formatNumber(value)}%`, 'Margin'];
+                  }
+                  return [formatNumber(value), 'Units'];
+                }}
                 labelStyle={{ fontSize: 12 }}
                 contentStyle={{ fontSize: 12 }}
               />
-              <Bar dataKey="quantity" fill={CHART_COLOURS[1]} radius={[0, 4, 4, 0]} />
+              <Bar
+                dataKey={barKey}
+                fill={CHART_COLOURS[barKey === 'quantity' ? 1 : 0]}
+                radius={[0, 4, 4, 0]}
+              />
             </BarChart>
           </ResponsiveContainer>
           <ul className="mt-2 space-y-1 text-xs">
@@ -360,7 +410,11 @@ function TopProductsTile({ period, onOpen }) {
               >
                 <span className="truncate text-foreground">{row.name}</span>
                 <span className="ml-2 font-medium text-muted-foreground">
-                  {formatNumber(row.quantity_sold)} · {formatCompactCurrency(row.revenue)}
+                  {showProfitability
+                    ? `${formatCompactCurrency(row.gross_profit)} · ${
+                        row.margin_pct == null ? '—' : `${formatNumber(row.margin_pct)}%`
+                      }`
+                    : `${formatNumber(row.quantity_sold)} · ${formatCompactCurrency(row.revenue)}`}
                 </span>
               </li>
             ))}
@@ -615,9 +669,14 @@ export default function ReportsHub() {
   const { settings: reportSettings } = useModuleSettings('reports');
   const goLegacy = (reportName) => () => navigate(`/reports?report=${reportName}`);
 
+  const { permissions } = getStoredAuth();
   const showSales = reportsEnableSalesReports(reportSettings);
   const showProducts = reportsEnableProductReports(reportSettings);
   const showProductPerformance = reportsProductTrendsEnabled(reportSettings);
+  const showProductProfitability = userMayViewProductProfitability(
+    permissions,
+    reportSettings
+  );
   const showCash = reportsEnableCashReports(reportSettings);
   const showInventory = reportsEnableInventoryReports(reportSettings);
   const showInvoice = reportsEnableInvoiceReports(reportSettings);
@@ -625,7 +684,6 @@ export default function ReportsHub() {
   const showTax = reportsShowTax(reportSettings);
   const showLegacy = reportsShowLegacyCatalog(reportSettings);
   const showFinancial = reportsEnableFinancialReports(reportSettings);
-  const { permissions } = getStoredAuth();
   const showTradingProfit =
     showFinancial && hasPermission(permissions, 'reports', 'profit');
 
@@ -698,7 +756,13 @@ export default function ReportsHub() {
             </Card>
           </>
         ) : null}
-        {showProducts ? <TopProductsTile period={period} onOpen={goLegacy('products')} /> : null}
+        {showProducts ? (
+          <TopProductsTile
+            period={period}
+            onOpen={goLegacy('products')}
+            showProfitability={showProductProfitability}
+          />
+        ) : null}
         {showProductPerformance ? (
           <Card className="flex flex-col border-dashed" data-testid="product-performance-hub-card">
             <CardHeader className="pb-3">
@@ -709,7 +773,7 @@ export default function ReportsHub() {
                 <div>
                   <CardTitle className="text-base">Product performance</CardTitle>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    Any SKU — sold units, revenue, and stock received by month or quarter, with variant compare.
+                    Compare several SKUs, pick any end month or quarter, and use purchase cues from sold vs received.
                   </p>
                 </div>
               </div>

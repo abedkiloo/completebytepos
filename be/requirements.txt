@@ -21,4 +21,6 @@ coverage>=7.0.0
 # Production server
 gunicorn>=21.2.0
 whitenoise>=6.6.0  # For serving static files in production
+# Redis is deferred: LocMem is the default cache. When enabling REDIS_URL later,
+# add: redis>=5.0.0
 

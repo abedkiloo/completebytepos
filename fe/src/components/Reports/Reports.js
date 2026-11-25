@@ -16,7 +16,9 @@ import {
   reportsShowDiscount,
   reportsShowTax,
   reportsShowCostAndProfit,
+  userMayViewProductProfitability,
 } from '../../utils/reportDisplay';
+import { getStoredAuth } from '../../utils/roleAccess';
 import { formatCurrency, formatNumber, formatDateTime, formatCompactCurrency } from '../../utils/formatters';
 import { CHART_SERIES, CHART_STATUS } from '../../utils/chartTheme';
 import ReportsList from './ReportsList';
@@ -40,10 +42,17 @@ import ReportExportButtons from './ReportExportButtons';
 
 const TOP_PRODUCT_LIMITS = [5, 10, 15, 20, 25, 50];
 const DEFAULT_TOP_PRODUCTS = 10;
+const PRODUCT_SORTS = [
+  { value: 'revenue', label: 'Revenue' },
+  { value: 'quantity', label: 'Units sold' },
+  { value: 'gross_profit', label: 'Gross profit' },
+  { value: 'margin_pct', label: 'Margin %' },
+];
 
 const PRODUCT_CHART_COLOURS = {
   quantity: CHART_SERIES[1],
   revenue: CHART_SERIES[0],
+  gross_profit: CHART_SERIES[2] || CHART_SERIES[0],
 };
 
 const Reports = () => {
@@ -54,12 +63,18 @@ const Reports = () => {
   const showDiscount = reportsShowDiscount(reportSettings);
   const showTax = reportsShowTax(reportSettings);
   const showCostProfit = reportsShowCostAndProfit(reportSettings) && userMaySeeProductCost();
-  
+  const { permissions } = getStoredAuth();
+  const showProductProfitability = userMayViewProductProfitability(
+    permissions,
+    reportSettings
+  );
+
   // All hooks must be called at the top level, before any conditional returns
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_REPORT_PERIOD);
   const [topProductLimit, setTopProductLimit] = useState(DEFAULT_TOP_PRODUCTS);
+  const [productSort, setProductSort] = useState('gross_profit');
   const [filters, setFilters] = useState(() => ({
     ...periodToDateFilters(DEFAULT_REPORT_PERIOD),
     year: new Date().getFullYear(),
@@ -99,7 +114,11 @@ const Reports = () => {
           response = await reportsAPI.customer(params);
           break;
         case 'products':
-          response = await reportsAPI.products({ ...params, limit: topProductLimit });
+          response = await reportsAPI.products({
+            ...params,
+            limit: topProductLimit,
+            sort: showProductProfitability ? productSort : 'revenue',
+          });
           break;
         case 'expense':
           response = await reportsAPI.expense(params);
@@ -125,7 +144,14 @@ const Reports = () => {
     } finally {
       setLoading(false);
     }
-  }, [reportParam, filters, reportSettings, topProductLimit]);
+  }, [
+    reportParam,
+    filters,
+    reportSettings,
+    topProductLimit,
+    productSort,
+    showProductProfitability,
+  ]);
 
   useEffect(() => {
     if (reportParam === 'daily-sales') {
@@ -652,7 +678,11 @@ const Reports = () => {
 
   const renderProductsReport = () => {
     const allProducts = reportData?.products || [];
-    const topRows = (reportData?.top?.length ? reportData.top : allProducts).slice(0, topProductLimit);
+    const topRows = (reportData?.top?.length ? reportData.top : allProducts).slice(
+      0,
+      topProductLimit
+    );
+    const activeSort = reportData?.sort || productSort;
     const chartData = topRows.map((product) => {
       const rawName = product.product__name || 'Unnamed';
       return {
@@ -660,9 +690,13 @@ const Reports = () => {
         fullName: rawName,
         quantity: Number(product.quantity_sold) || 0,
         revenue: Number(product.revenue) || 0,
+        gross_profit: Number(product.gross_profit) || 0,
+        margin_pct: product.margin_pct == null ? null : Number(product.margin_pct),
       };
     });
     const chartHeight = Math.max(220, topRows.length * 36);
+    const sortLabel =
+      PRODUCT_SORTS.find((s) => s.value === activeSort)?.label || 'Revenue';
 
     return (
       <>
@@ -671,28 +705,58 @@ const Reports = () => {
             <div>
               <h3 className="m-0">Top {topProductLimit} products</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                How the best sellers performed in this period — change how many to show.
+                {showProductProfitability
+                  ? 'Rank goods by profit or margin to see which earn more for the business.'
+                  : 'How the best sellers performed in this period — change how many to show.'}
               </p>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Show top</span>
-              <select
-                aria-label="Top products count"
-                className="h-9 rounded-md border border-input bg-background px-2 text-sm"
-                value={topProductLimit}
-                onChange={(e) => setTopProductLimit(Number(e.target.value) || DEFAULT_TOP_PRODUCTS)}
-              >
-                {TOP_PRODUCT_LIMITS.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              {showProductProfitability ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Rank by</span>
+                  <select
+                    aria-label="Product profitability sort"
+                    data-testid="product-profitability-sort"
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    value={productSort}
+                    onChange={(e) => setProductSort(e.target.value)}
+                  >
+                    {PRODUCT_SORTS.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <label className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Show top</span>
+                <select
+                  aria-label="Top products count"
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                  value={topProductLimit}
+                  onChange={(e) =>
+                    setTopProductLimit(Number(e.target.value) || DEFAULT_TOP_PRODUCTS)
+                  }
+                >
+                  {TOP_PRODUCT_LIMITS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
 
           {topRows.length > 0 ? (
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div
+              className={
+                showProductProfitability
+                  ? 'grid gap-6 lg:grid-cols-3'
+                  : 'grid gap-6 lg:grid-cols-2'
+              }
+            >
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Units sold
@@ -703,13 +767,26 @@ const Reports = () => {
                     layout="vertical"
                     margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
                   >
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => formatNumber(v)} />
-                    <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11 }} />
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 11 }}
+                      tickFormatter={(v) => formatNumber(v)}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={130}
+                      tick={{ fontSize: 11 }}
+                    />
                     <Tooltip
                       formatter={(value) => [formatNumber(value), 'Units']}
                       labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
                     />
-                    <Bar dataKey="quantity" fill={PRODUCT_CHART_COLOURS.quantity} radius={[0, 4, 4, 0]} />
+                    <Bar
+                      dataKey="quantity"
+                      fill={PRODUCT_CHART_COLOURS.quantity}
+                      radius={[0, 4, 4, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -728,15 +805,61 @@ const Reports = () => {
                       tick={{ fontSize: 11 }}
                       tickFormatter={(v) => formatCompactCurrency(v)}
                     />
-                    <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 11 }} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={130}
+                      tick={{ fontSize: 11 }}
+                    />
                     <Tooltip
                       formatter={(value) => [formatCurrency(value), 'Revenue']}
                       labelFormatter={(_, payload) => payload?.[0]?.payload?.fullName || ''}
                     />
-                    <Bar dataKey="revenue" fill={PRODUCT_CHART_COLOURS.revenue} radius={[0, 4, 4, 0]} />
+                    <Bar
+                      dataKey="revenue"
+                      fill={PRODUCT_CHART_COLOURS.revenue}
+                      radius={[0, 4, 4, 0]}
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              {showProductProfitability ? (
+                <div data-testid="product-profit-chart">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Gross profit
+                  </p>
+                  <ResponsiveContainer width="100%" height={chartHeight}>
+                    <BarChart
+                      data={chartData}
+                      layout="vertical"
+                      margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
+                    >
+                      <XAxis
+                        type="number"
+                        tick={{ fontSize: 11 }}
+                        tickFormatter={(v) => formatCompactCurrency(v)}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        width={130}
+                        tick={{ fontSize: 11 }}
+                      />
+                      <Tooltip
+                        formatter={(value) => [formatCurrency(value), 'Gross profit']}
+                        labelFormatter={(_, payload) =>
+                          payload?.[0]?.payload?.fullName || ''
+                        }
+                      />
+                      <Bar
+                        dataKey="gross_profit"
+                        fill={PRODUCT_CHART_COLOURS.gross_profit}
+                        radius={[0, 4, 4, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className={R.empty}>No product sales data available</div>
@@ -745,9 +868,13 @@ const Reports = () => {
 
         {topRows.length > 0 ? (
           <div className={R.section}>
-            <h3>Product sales detail</h3>
+            <h3>
+              {showProductProfitability
+                ? 'Product profitability detail'
+                : 'Product sales detail'}
+            </h3>
             <div className={R.tableWrap}>
-              <table className={R.table}>
+              <table className={R.table} data-testid="product-profitability-table">
                 <thead>
                   <tr>
                     <th>#</th>
@@ -757,6 +884,13 @@ const Reports = () => {
                     <th>Quantity Sold</th>
                     <th>Revenue</th>
                     <th>Avg Price</th>
+                    {showProductProfitability ? (
+                      <>
+                        <th>COGS</th>
+                        <th>Gross profit</th>
+                        <th>Margin %</th>
+                      </>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -769,6 +903,17 @@ const Reports = () => {
                       <td>{formatNumber(product.quantity_sold)}</td>
                       <td>{formatCurrency(product.revenue)}</td>
                       <td>{formatCurrency(product.avg_price || 0)}</td>
+                      {showProductProfitability ? (
+                        <>
+                          <td>{formatCurrency(product.cogs || 0)}</td>
+                          <td>{formatCurrency(product.gross_profit || 0)}</td>
+                          <td>
+                            {product.margin_pct == null
+                              ? '—'
+                              : `${formatNumber(product.margin_pct)}%`}
+                          </td>
+                        </>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -776,8 +921,9 @@ const Reports = () => {
             </div>
             {allProducts.length > topRows.length ? (
               <p className="mt-2 text-xs text-muted-foreground">
-                Showing top {topRows.length} of {formatNumber(allProducts.length)} products by revenue.
-                Raise the limit above to include more.
+                Showing top {topRows.length} of {formatNumber(allProducts.length)}{' '}
+                products by {sortLabel.toLowerCase()}. Raise the limit above to include
+                more.
               </p>
             ) : null}
           </div>
@@ -1127,7 +1273,7 @@ const Reports = () => {
               : reportParam === 'stock-valuation'
                 ? 'On-hand stock with inventory and selling value. PDF, Excel, and CSV include the store logo and name.'
                 : reportParam === 'product-performance'
-                  ? 'Pick any product and study sold units, revenue, and stock received by month or quarter.'
+                  ? 'Compare products, choose any end month or quarter, and use purchase cues from sold vs received.'
                   : `Analytics for ${getReportTitle().toLowerCase()}. Download PDF or Excel anytime.`
           }
         >

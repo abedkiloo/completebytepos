@@ -81,7 +81,7 @@ const StockPurchaseModal = ({ product, onClose, onSave }) => {
       const params = {
         track_stock: 'true',
         is_active: 'true',
-        page_size: 1000,
+        page_size: 200,
       };
       const response = await productsAPI.list(params);
       const productsData = response.data.results || response.data || [];

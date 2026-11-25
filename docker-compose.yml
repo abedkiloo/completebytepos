@@ -5,8 +5,8 @@
 # Start UAT:  ./run_uat.sh          (or ./run_docker.sh --uat)
 #
 # Requires .env (copy from .env.example). PostgreSQL is the default database.
-# Load defaults (~2 GB VPS): 2 Gunicorn workers × 4 threads, Postgres 128MB shared_buffers.
-# UAT should use GUNICORN_WORKERS=1 so both stacks fit.
+# Load defaults (~2 GB VPS, no Redis): 1 Gunicorn worker × 8 threads (LocMem),
+# Postgres 128MB shared_buffers. Raise workers only after Redis is adopted.
 
 services:
   db:
@@ -81,10 +81,16 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-completebytepos}
       - DB_CONN_MAX_AGE=${DB_CONN_MAX_AGE:-300}
       - PYTHONUNBUFFERED=1
-      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
-      - GUNICORN_THREADS=${GUNICORN_THREADS:-4}
+      # Without Redis, prefer 1 worker × more threads so LocMem cache/throttles
+      # stay coherent in one process (override via .env when Redis returns).
+      - GUNICORN_WORKERS=${GUNICORN_WORKERS:-1}
+      - GUNICORN_THREADS=${GUNICORN_THREADS:-8}
       - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-60}
       - GUNICORN_MAX_REQUESTS=${GUNICORN_MAX_REQUESTS:-800}
+      - REPORT_CACHE_SECONDS=${REPORT_CACHE_SECONDS:-20}
+      - THROTTLE_REPORTS_RATE=${THROTTLE_REPORTS_RATE:-120/min}
+      - THROTTLE_HEAVY_READ_RATE=${THROTTLE_HEAVY_READ_RATE:-60/min}
+      - API_MAX_PAGE_SIZE=${API_MAX_PAGE_SIZE:-200}
     entrypoint: ["/bin/sh", "/app/docker-entrypoint.sh"]
     restart: unless-stopped
     depends_on:

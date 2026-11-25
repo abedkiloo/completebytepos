@@ -26,6 +26,8 @@ jest.mock('recharts', () => ({
 const samplePayload = {
   product_id: 7,
   grain: 'month',
+  end_period: '2026-06',
+  end_period_label: 'Jun 2026',
   span_requested: 12,
   months_requested: 12,
   periods: [
@@ -111,6 +113,16 @@ const samplePayload = {
     best_month: '2026-05',
     best_month_label: 'May 2026',
   },
+  insights: [
+    {
+      severity: 'reorder',
+      title: 'Demand ahead of receipts',
+      detail: 'Sold more than received — favour restocking.',
+    },
+  ],
+  compare_keys: [],
+  compare_series: [],
+  compare_totals: [],
 };
 
 describe('ProductTrendsPanel', () => {
@@ -123,28 +135,35 @@ describe('ProductTrendsPanel', () => {
     await waitFor(() =>
       expect(screen.getByTestId('product-trends-summary')).toBeInTheDocument()
     );
-    expect(reportsAPI.productTrends).toHaveBeenCalledWith({
-      product_id: 7,
-      grain: 'month',
-      months: 12,
-      include_variants: '1',
-    });
+    expect(reportsAPI.productTrends).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 7,
+        grain: 'month',
+        months: 12,
+        include_variants: '1',
+        end: expect.stringMatching(/^\d{4}-\d{2}$/),
+      })
+    );
     expect(screen.getByTestId('product-trends-sold-chart')).toBeInTheDocument();
     expect(screen.getByTestId('product-trends-sold-received-chart')).toBeInTheDocument();
     expect(screen.getByTestId('product-trends-variant-compare-chart')).toBeInTheDocument();
+    expect(screen.getByTestId('product-trends-insights')).toBeInTheDocument();
     expect(screen.getByText('May 2026')).toBeInTheDocument();
   });
 
   it('passes variant_id when focused and skips compare payload', async () => {
     render(<ProductTrendsPanel productId={7} variantId={99} />);
     await waitFor(() => expect(reportsAPI.productTrends).toHaveBeenCalled());
-    expect(reportsAPI.productTrends).toHaveBeenCalledWith({
-      product_id: 7,
-      grain: 'month',
-      months: 12,
-      variant_id: 99,
-      include_variants: '0',
-    });
+    expect(reportsAPI.productTrends).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: 7,
+        grain: 'month',
+        months: 12,
+        variant_id: 99,
+        include_variants: '0',
+        end: expect.stringMatching(/^\d{4}-\d{2}$/),
+      })
+    );
   });
 
   it('reloads when months span changes', async () => {
@@ -154,12 +173,32 @@ describe('ProductTrendsPanel', () => {
       target: { value: '6' },
     });
     await waitFor(() =>
-      expect(reportsAPI.productTrends).toHaveBeenLastCalledWith({
-        product_id: 7,
-        grain: 'month',
-        months: 6,
-        include_variants: '1',
-      })
+      expect(reportsAPI.productTrends).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          product_id: 7,
+          grain: 'month',
+          months: 6,
+          include_variants: '1',
+          end: expect.stringMatching(/^\d{4}-\d{2}$/),
+        })
+      )
+    );
+  });
+
+  it('sends compare_ids and custom end quarter', async () => {
+    render(
+      <ProductTrendsPanel productId={7} compareProductIds={[8, 9]} />
+    );
+    await waitFor(() => expect(reportsAPI.productTrends).toHaveBeenCalled());
+    fireEvent.click(screen.getByTestId('product-trends-grain-quarter'));
+    await waitFor(() =>
+      expect(reportsAPI.productTrends).toHaveBeenCalledWith(
+        expect.objectContaining({
+          grain: 'quarter',
+          compare_ids: '8,9',
+          end: expect.stringMatching(/^\d{4}-Q[1-4]$/),
+        })
+      )
     );
   });
 
@@ -194,12 +233,35 @@ describe('ProductTrendsPanel', () => {
     await waitFor(() => expect(reportsAPI.productTrends).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('product-trends-grain-quarter'));
     await waitFor(() =>
-      expect(reportsAPI.productTrends).toHaveBeenLastCalledWith({
-        product_id: 7,
-        grain: 'quarter',
-        quarters: 4,
-        include_variants: '1',
-      })
+      expect(reportsAPI.productTrends).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          product_id: 7,
+          grain: 'quarter',
+          quarters: 4,
+          include_variants: '1',
+          end: expect.stringMatching(/^\d{4}-Q[1-4]$/),
+        })
+      )
+    );
+  });
+
+  it('reloads when end month changes', async () => {
+    render(<ProductTrendsPanel productId={7} />);
+    await waitFor(() => expect(reportsAPI.productTrends).toHaveBeenCalled());
+    fireEvent.change(screen.getByTestId('product-trends-end-year'), {
+      target: { value: '2024' },
+    });
+    fireEvent.change(screen.getByTestId('product-trends-end-month'), {
+      target: { value: '3' },
+    });
+    await waitFor(() =>
+      expect(reportsAPI.productTrends).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          product_id: 7,
+          grain: 'month',
+          end: '2024-03',
+        })
+      )
     );
   });
 

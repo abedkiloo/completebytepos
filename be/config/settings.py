@@ -8,6 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from config.cache import build_caches
 from config.database import build_databases
 from config.env import (
     env_bool,
@@ -160,13 +161,9 @@ WSGI_APPLICATION = 'config.wsgi.application'
 RUNNING_TESTS = 'test' in sys.argv
 DATABASES = build_databases(base_dir=BASE_DIR, running_tests=RUNNING_TESTS)
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'completebytepos-settings',
-        'TIMEOUT': 30,
-    },
-}
+# LocMem only for now (no Redis). Leave REDIS_URL unset; prefer 1 Gunicorn
+# worker × more threads so cache/throttles stay in-process. Redis later.
+CACHES = build_caches(running_tests=RUNNING_TESTS)
 
 # ---------------------------------------------------------------------------
 # Auth / i18n
@@ -273,8 +270,15 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'login': env_str('THROTTLE_LOGIN_RATE', '10/min'),
         'sms_blast': env_str('THROTTLE_SMS_BLAST_RATE', '5/hour'),
+        # Expensive authenticated reads only (applied per-view). Sale checkout
+        # stays unthrottled so cashiers are never blocked mid-tender.
+        'reports': env_str('THROTTLE_REPORTS_RATE', '120/min'),
+        'heavy_read': env_str('THROTTLE_HEAVY_READ_RATE', '60/min'),
     },
 }
+
+# Short TTL for idempotent report aggregates (product trends). 0 disables.
+REPORT_CACHE_SECONDS = env_int('REPORT_CACHE_SECONDS', 20)
 
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=env_int('JWT_ACCESS_TOKEN_MINUTES', 30)),

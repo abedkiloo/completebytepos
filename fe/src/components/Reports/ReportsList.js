@@ -68,14 +68,16 @@ const ALL_REPORTS = [
     name: 'Product Report',
     icon: '📋',
     hasDetail: true,
-    description: 'Product sales performance and trends',
+    description:
+      'Units, revenue, and profitability margin per good — rank which SKUs earn more',
   },
   {
     id: 'product-performance',
     name: 'Product performance',
     icon: '📈',
     hasDetail: true,
-    description: 'Any product — month and quarter sold units, revenue, and stock received',
+    description:
+      'Compare products, pick any end month/quarter, and get purchase cues from trends',
   },
   {
     id: 'expense',

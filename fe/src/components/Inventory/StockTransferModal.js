@@ -53,7 +53,7 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
   const loadProducts = async () => {
     try {
       // Load all products that track stock - request large page size to get all
-      const response = await productsAPI.list({ track_stock: true, is_active: true, page_size: 1000 });
+      const response = await productsAPI.list({ track_stock: true, is_active: true, page_size: 200 });
       const productsData = response.data.results || response.data || [];
       setProducts(Array.isArray(productsData) ? productsData : []);
     } catch (error) {
@@ -63,7 +63,7 @@ const StockTransferModal = ({ isOpen, onClose, onSuccess, product }) => {
 
   const loadBranches = async () => {
     try {
-      const response = await branchesAPI.list({ is_active: true, page_size: 1000 });
+      const response = await branchesAPI.list({ is_active: true, page_size: 200 });
       const branchesData = response.data.results || response.data || [];
       setBranches(Array.isArray(branchesData) ? branchesData : []);
     } catch (error) {

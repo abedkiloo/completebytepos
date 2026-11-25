@@ -80,7 +80,7 @@ const Users = () => {
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const response = await usersAPI.list(withListOrdering({ page_size: 1000 }, ordering));
+      const response = await usersAPI.list(withListOrdering({ page_size: 200 }, ordering));
       const usersData = response.data.results || response.data || [];
       setUsers(Array.isArray(usersData) ? usersData : []);
     } catch (error) {

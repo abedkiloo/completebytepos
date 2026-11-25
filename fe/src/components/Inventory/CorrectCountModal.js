@@ -23,7 +23,7 @@ const CorrectCountModal = ({ onClose, onSave }) => {
     productsAPI.list({
       track_stock: 'true',
       is_active: 'true',
-      page_size: 1000,
+      page_size: 200,
     }).then((response) => {
       if (cancelled) return;
       const rows = response.data.results || response.data || [];

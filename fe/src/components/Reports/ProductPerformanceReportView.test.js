@@ -29,8 +29,13 @@ jest.mock('../../utils/toast', () => ({
 
 jest.mock('../Products/ProductTrendsPanel', () => ({
   __esModule: true,
-  default: ({ productId }) => (
-    <div data-testid="product-trends-panel">trends-for-{productId}</div>
+  default: ({ productId, compareProductIds }) => (
+    <div data-testid="product-trends-panel">
+      trends-for-{productId}
+      <span data-testid="product-trends-compare-prop">
+        {(compareProductIds || []).join(',')}
+      </span>
+    </div>
   ),
 }));
 
@@ -60,6 +65,11 @@ jest.mock('../ui/button', () => ({
 
 jest.mock('lucide-react', () => ({
   PackageSearch: () => <span>icon</span>,
+  X: () => <span>x</span>,
+}));
+
+jest.mock('../ui/badge', () => ({
+  Badge: ({ children, ...props }) => <span {...props}>{children}</span>,
 }));
 
 describe('ProductPerformanceReportView helpers (unit)', () => {
@@ -153,6 +163,74 @@ describe('ProductPerformanceReportView', () => {
     expect(screen.getByTestId('product-performance-selected-name')).toHaveTextContent(
       'Cement 50kg'
     );
+  });
+
+  it('corrected: adds a peer to compare and passes compare_ids', async () => {
+    mockSearchParams = new URLSearchParams(
+      'report=product-performance&product_id=7'
+    );
+    productsAPI.get.mockImplementation((id) => {
+      if (Number(id) === 7) {
+        return Promise.resolve({
+          data: { id: 7, name: 'Cement 50kg', sku: 'CEM-50', variants: [] },
+        });
+      }
+      if (Number(id) === 8) {
+        return Promise.resolve({
+          data: { id: 8, name: 'Hinge', sku: 'H1', variants: [] },
+        });
+      }
+      return Promise.reject(new Error('missing'));
+    });
+
+    await act(async () => {
+      render(<ProductPerformanceReportView />);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('product-trends-panel')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByTestId('product-performance-add-compare'));
+    fireEvent.change(screen.getByTestId('product-performance-search'), {
+      target: { value: 'Hinge' },
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(300);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('product-performance-pick-8')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByTestId('product-performance-pick-8'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('product-performance-compare-chip-8')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('product-trends-compare-prop')).toHaveTextContent('8');
+    const nextParams = mockSetSearchParams.mock.calls.at(-1)[0];
+    expect(nextParams.get('compare_ids')).toBe('8');
+  });
+
+  it('integration: hydrates compare_ids from URL', async () => {
+    mockSearchParams = new URLSearchParams(
+      'report=product-performance&product_id=7&compare_ids=8'
+    );
+    productsAPI.get.mockImplementation((id) => {
+      if (Number(id) === 7) {
+        return Promise.resolve({
+          data: { id: 7, name: 'Cement 50kg', sku: 'CEM-50', variants: [] },
+        });
+      }
+      return Promise.resolve({
+        data: { id: 8, name: 'Hinge', sku: 'H1', variants: [] },
+      });
+    });
+    await act(async () => {
+      render(<ProductPerformanceReportView />);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('product-performance-compare-chip-8')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('product-trends-compare-prop')).toHaveTextContent('8');
   });
 });
 

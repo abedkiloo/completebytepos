@@ -1,7 +1,25 @@
 """
 Shared DRF pagination classes.
 """
+import os
+
 from rest_framework.pagination import PageNumberPagination
+
+
+def _max_page_size() -> int:
+    """
+    Cap for ``?page_size=`` across list APIs.
+
+    Returns:
+        Integer 20–500 from ``API_MAX_PAGE_SIZE`` (default 200). Keeps
+        POS/catalog usable while blocking abusive full-table dumps.
+    """
+    raw = (os.getenv('API_MAX_PAGE_SIZE') or '200').strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return 200
+    return max(20, min(500, value))
 
 
 class StandardResultsSetPagination(PageNumberPagination):
@@ -20,4 +38,4 @@ class StandardResultsSetPagination(PageNumberPagination):
 
     page_size = 10
     page_size_query_param = 'page_size'
-    max_page_size = 200
+    max_page_size = _max_page_size()

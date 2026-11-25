@@ -26,6 +26,39 @@ export function reportsProductTrendsEnabled(settings) {
 }
 
 /**
+ * Product profitability ranking (gross profit + margin %) on product reports.
+ *
+ * Requires product reports setting, package feature, cost/profit store toggle,
+ * and the viewer's products.view_cost (or equivalent) access.
+ *
+ * @param {object} [settings] Reports ModuleSetting map from cache.
+ * @returns {boolean}
+ */
+export function reportsProductProfitabilityEnabled(settings) {
+  if (!reportsEnableProductReports(settings)) return false;
+  if (!reportsShowCostAndProfit(settings)) return false;
+  return isModuleFeatureEnabled('reports', 'product_profitability', true);
+}
+
+/**
+ * Whether the viewer may rank goods by profit / margin.
+ *
+ * @param {Array<{module?: string, action?: string}>} [permissions]
+ * @param {object} [settings]
+ * @returns {boolean}
+ */
+export function userMayViewProductProfitability(permissions = [], settings = {}) {
+  const canView = (permissions || []).some(
+    (p) => p.module === 'reports' && p.action === 'view'
+  );
+  return (
+    canView &&
+    reportsProductProfitabilityEnabled(settings) &&
+    userMaySeeProductCost()
+  );
+}
+
+/**
  * Whether the viewer may open product performance charts.
  *
  * @param {Array<{module?: string, action?: string}>} [permissions]

@@ -109,6 +109,18 @@ class CallBookView(APIView):
     """Shared Monday–Friday book. Not-called customers are listed first."""
 
     permission_classes = [IsAuthenticated, _PERM, _CallBookFeature]
+    throttle_classes = []
+
+    def get_throttles(self):
+        """
+        Cap stampede reads of the full-week book builder.
+
+        Returns:
+            One ``HeavyReadRateThrottle`` instance (default 60/min).
+        """
+        from accounts.throttles import HeavyReadRateThrottle
+
+        return [HeavyReadRateThrottle()]
 
     def get(self, request):
         """

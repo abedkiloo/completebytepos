@@ -105,7 +105,7 @@ describe('ReportsHub period picker', () => {
         expect.objectContaining({ period: 'today' })
       );
       expect(reportsAPI.topProducts).toHaveBeenCalledWith(
-        expect.objectContaining({ period: 'today', limit: 10 })
+        expect.objectContaining({ period: 'today', limit: 10, sort: expect.any(String) })
       );
       expect(reportsAPI.cashAndPayments).toHaveBeenCalledWith(
         expect.objectContaining({ period: 'today' })

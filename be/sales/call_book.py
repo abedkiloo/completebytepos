@@ -459,6 +459,7 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
 
     settings_row = CallBookSettings.load()
     plans = list(CallDayPlan.objects.all())
+    # Slim columns only — full Customer rows explode RAM under large books.
     customers = list(
         Customer.objects.filter(is_active=True).only(
             'id', 'name', 'phone', 'owner_name', 'contact_person',
@@ -468,24 +469,32 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         )
     )
     assignments = assign_sub_county_weekdays(sub_county_call_groups(customers))
+    _call_only = (
+        'id', 'customer_id', 'week_start', 'outcome', 'request_summary',
+        'called_at', 'called_by_id', 'follow_up_on', 'follow_up_at',
+    )
     week_calls = (
         CustomerCall.objects.filter(week_start=monday)
         .select_related('called_by')
+        .only(*_call_only, 'called_by__id', 'called_by__username', 'called_by__first_name',
+              'called_by__last_name')
         .order_by('called_at')
     )
     this_week = {}
     week_call_lists: dict[int, list] = defaultdict(list)
-    for call in week_calls:
+    for call in week_calls.iterator(chunk_size=500):
         this_week[call.customer_id] = call
         week_call_lists[call.customer_id].append(call)
     last_week_calls = (
         CustomerCall.objects.filter(week_start=last_monday)
         .select_related('called_by')
+        .only(*_call_only, 'called_by__id', 'called_by__username', 'called_by__first_name',
+              'called_by__last_name')
         .order_by('called_at')
     )
     last_week_ids: set[int] = set()
     last_week_lists: dict[int, list] = defaultdict(list)
-    for call in last_week_calls:
+    for call in last_week_calls.iterator(chunk_size=500):
         last_week_ids.add(call.customer_id)
         last_week_lists[call.customer_id].append(call)
     latest_prior = (
@@ -493,16 +502,20 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         .values('customer_id')
         .annotate(latest_id=Max('id'))
     )
+    prior_ids = [row['latest_id'] for row in latest_prior]
     previous = {
         call.customer_id: call
-        for call in CustomerCall.objects.filter(
-            id__in=[row['latest_id'] for row in latest_prior],
-        )
+        for call in CustomerCall.objects.filter(id__in=prior_ids).only(*_call_only)
     }
     now = operation_now(day)
     holds = {
         hold.customer_id: hold
-        for hold in CallHold.objects.filter(expires_at__gt=now).select_related('held_by')
+        for hold in CallHold.objects.filter(expires_at__gt=now)
+        .select_related('held_by')
+        .only(
+            'id', 'customer_id', 'expires_at', 'held_by_id',
+            'held_by__id', 'held_by__username', 'held_by__first_name', 'held_by__last_name',
+        )
     }
 
     rows = []

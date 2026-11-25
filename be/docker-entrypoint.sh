@@ -13,8 +13,10 @@ python manage.py init_modules || true
 python manage.py create_users || true
 python manage.py collectstatic --noinput || true
 
-WORKERS="${GUNICORN_WORKERS:-2}"
-THREADS="${GUNICORN_THREADS:-4}"
+# LocMem-friendly defaults: one worker shares cache/throttles; raise workers
+# only after Redis is enabled.
+WORKERS="${GUNICORN_WORKERS:-1}"
+THREADS="${GUNICORN_THREADS:-8}"
 TIMEOUT="${GUNICORN_TIMEOUT:-60}"
 MAX_REQ="${GUNICORN_MAX_REQUESTS:-800}"
 

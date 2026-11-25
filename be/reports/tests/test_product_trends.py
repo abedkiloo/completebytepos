@@ -14,6 +14,9 @@ from inventory.models import StockMovement
 from products.models import Category, Color, Product, ProductVariant, Size
 from reports.product_trends import (
     build_product_trends,
+    build_purchase_insights,
+    parse_compare_product_ids,
+    parse_end_period,
     product_trends_allowed,
     product_trends_feature_enabled,
 )
@@ -89,6 +92,86 @@ class ProductTrendsUnitTests(ManagerAPITestCase):
         self.assertEqual(payload['months'][0]['month'], '2024-07')
         self.assertEqual(payload['months'][-1]['month'], '2026-06')
         self.assertEqual(payload['summary']['quantity_sold'], 0)
+        self.assertEqual(payload['end_period'], '2026-06')
+        self.assertIsInstance(payload['insights'], list)
+
+    def test_parse_end_period_month_and_quarter(self):
+        self.assertEqual(parse_end_period('2025-03', 'month'), date(2025, 3, 1))
+        self.assertEqual(parse_end_period('2025-Q2', 'quarter'), date(2025, 4, 1))
+        with self.assertRaises(ValueError):
+            parse_end_period('2025-13', 'month')
+
+    def test_parse_compare_ids_dedupes_and_caps(self):
+        ids = parse_compare_product_ids('2,2,3,4,5,6,7', primary_id=1, max_peers=4)
+        self.assertEqual(ids, [2, 3, 4, 5])
+
+    def test_build_with_explicit_end_quarter(self):
+        payload = build_product_trends(
+            product_id=self.product.id,
+            grain='quarter',
+            quarters=4,
+            end='2025-Q4',
+        )
+        self.assertEqual(payload['end_period'], '2025-Q4')
+        self.assertEqual(payload['periods'][-1]['period'], '2025-Q4')
+        self.assertEqual(len(payload['periods']), 4)
+
+    def test_build_compare_products_and_insights(self):
+        peer = Product.objects.create(
+            name='Peer Trend',
+            sku='TREND-PEER',
+            category=self.product.category,
+            price=Decimal('80.00'),
+            cost=Decimal('30.00'),
+            stock_quantity=20,
+            track_stock=True,
+            is_active=True,
+        )
+        sale = Sale.objects.create(
+            status='completed',
+            payment_method='cash',
+            subtotal=Decimal('300.00'),
+            tax_amount=Decimal('0'),
+            discount_amount=Decimal('0'),
+            total=Decimal('300.00'),
+            amount_paid=Decimal('300.00'),
+            cashier=self.manager_user,
+            client_channel='pos',
+            occurred_at=timezone.make_aware(datetime(2026, 4, 10, 12, 0, 0)),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('100.00'),
+            subtotal=Decimal('100.00'),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=peer,
+            quantity=5,
+            unit_price=Decimal('40.00'),
+            subtotal=Decimal('200.00'),
+        )
+        payload = build_product_trends(
+            product_id=self.product.id,
+            months=3,
+            end='2026-04',
+            compare_ids=[peer.id],
+        )
+        self.assertEqual(payload['compare_ids'], [peer.id])
+        self.assertEqual(len(payload['compare_keys']), 2)
+        self.assertTrue(payload['compare_series'])
+        self.assertTrue(
+            any(t['product_id'] == peer.id for t in payload['compare_totals'])
+        )
+        tips = build_purchase_insights(
+            periods=payload['periods'],
+            summary=payload['summary'],
+            grain='month',
+            product_name='Trend Soap',
+        )
+        self.assertTrue(tips)
 
     def test_build_aggregates_sold_and_received(self):
         sale = Sale.objects.create(
@@ -364,6 +447,39 @@ class ProductTrendsAPITests(ManagerAPITestCase):
         self.assertEqual(response.data['quarters_requested'], 4)
         self.assertEqual(len(response.data['periods']), 4)
         self.assertEqual(response.data['months'], [])
+
+    def test_api_end_period_and_compare_ids(self):
+        peer = Product.objects.create(
+            name='Compare Tea',
+            sku='TREND-CMP',
+            price=Decimal('8.00'),
+            cost=Decimal('3.00'),
+            stock_quantity=10,
+            track_stock=True,
+            is_active=True,
+        )
+        response = self.client.get(
+            '/api/reports/product-trends/',
+            {
+                'product_id': self.product.id,
+                'months': 3,
+                'end': '2025-06',
+                'compare_ids': str(peer.id),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['end_period'], '2025-06')
+        self.assertEqual(response.data['compare_ids'], [peer.id])
+        self.assertEqual(len(response.data['compare_keys']), 2)
+        self.assertIn('insights', response.data)
+        self.assertIsInstance(response.data['insights'], list)
+
+    def test_api_bad_end_returns_400(self):
+        response = self.client.get(
+            '/api/reports/product-trends/',
+            {'product_id': self.product.id, 'end': 'not-a-period'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class ProductTrendsModuleTests(ManagerAPITestCase):

@@ -1,4 +1,4 @@
-"""Auth-related DRF throttles (login / JWT token obtain)."""
+"""Auth-related and expensive-read DRF throttles."""
 
 from rest_framework.throttling import ScopedRateThrottle
 
@@ -22,3 +22,26 @@ class SmsBlastRateThrottle(ScopedRateThrottle):
     """
 
     scope = 'sms_blast'
+
+
+class ReportRateThrottle(ScopedRateThrottle):
+    """
+    Cap authenticated report reads (aggregates / trends / exports).
+
+    Scope ``reports`` defaults to ``120/min``. Checkout and sale writes are
+    not covered — apply only on report viewsets. Shared Redis cache makes
+    the counter correct across Gunicorn workers.
+    """
+
+    scope = 'reports'
+
+
+class HeavyReadRateThrottle(ScopedRateThrottle):
+    """
+    Cap heavy list builders (call book, large catalogue dumps).
+
+    Scope ``heavy_read`` defaults to ``60/min``. Keeps business flow usable
+    for a desk while blocking accidental or hostile stampede traffic.
+    """
+
+    scope = 'heavy_read'

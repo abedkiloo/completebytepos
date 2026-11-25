@@ -509,12 +509,12 @@ describe('ProductForm integration', () => {
     await waitFor(() => {
       expect(sizesAPI.list).toHaveBeenCalledWith({
         is_active: 'true',
-        page_size: 500,
+        page_size: 200,
       });
     });
     expect(colorsAPI.list).toHaveBeenCalledWith({
       is_active: 'true',
-      page_size: 500,
+      page_size: 200,
     });
   });
 });
