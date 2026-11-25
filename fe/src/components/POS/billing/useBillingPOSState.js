@@ -669,8 +669,9 @@ export function useBillingPOSState({ resumeSaleId = null } = {}) {
           ? {
               ...item,
               price: nextPrice,
-              selling_price: nextPrice,
+              // Keep catalog floor stable; only the charged unit price changes.
               catalog_price: item.catalog_price ?? catalog,
+              selling_price: item.catalog_price ?? item.selling_price ?? catalog,
             }
           : item
       );

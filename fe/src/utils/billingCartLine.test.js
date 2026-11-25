@@ -1,4 +1,9 @@
-import { resolveCartVariantId, buildBillingCartLine, holdingSaleItemToCartLine } from './billingCartLine';
+import {
+  resolveCartVariantId,
+  buildBillingCartLine,
+  holdingSaleItemToCartLine,
+  resolveHoldingCatalogUnitPrice,
+} from './billingCartLine';
 
 describe('billingCartLine', () => {
   beforeEach(() => {
@@ -100,6 +105,63 @@ describe('billingCartLine', () => {
     expect(line.size_name).toBe('Large');
     expect(line.color_name).toBe('White');
     expect(line.variant_id).toBe(12);
+  });
+
+  it('holdingSaleItemToCartLine keeps catalog floor when unit price is marked up', () => {
+    const line = holdingSaleItemToCartLine(
+      {
+        product_id: 9,
+        product_name: 'NO 5 Zipper',
+        quantity: 11,
+        unit_price: '17600',
+        product: {
+          id: 9,
+          name: 'NO 5 Zipper',
+          price: '1800',
+          selling_price: '1800',
+          mrp: '1800',
+          stock_quantity: 100,
+          track_stock: true,
+        },
+      },
+      { validateStock: false }
+    );
+    expect(line.catalog_price).toBe(1800);
+    expect(line.selling_price).toBe(1800);
+    expect(line.price).toBe(17600);
+    expect(line.mrp).toBe(1800);
+  });
+
+  it('holdingSaleItemToCartLine uses variant effective_price as catalog when parent price empty', () => {
+    const line = holdingSaleItemToCartLine(
+      {
+        product_id: 1,
+        product_name: 'Zipper',
+        quantity: 2,
+        unit_price: '5000',
+        variant_id: 3,
+        product: { id: 1, name: 'Zipper', mrp: '1800', stock_quantity: 10 },
+        variant: { id: 3, effective_price: '1800', color_name: 'BLACK' },
+      },
+      { validateStock: false }
+    );
+    expect(line.catalog_price).toBe(1800);
+    expect(line.price).toBe(5000);
+  });
+
+  it('holdingSaleItemToCartLine falls back to mrp before charged unit_price', () => {
+    const line = holdingSaleItemToCartLine(
+      {
+        product_id: 2,
+        product_name: 'Pin',
+        quantity: 1,
+        unit_price: '9000',
+        product: { id: 2, name: 'Pin', mrp: '1200' },
+      },
+      { validateStock: false }
+    );
+    expect(line.catalog_price).toBe(1200);
+    expect(line.price).toBe(9000);
   });
 
   it('caps quantity to stock when validateStock is enabled', () => {

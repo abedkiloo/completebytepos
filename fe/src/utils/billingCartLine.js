@@ -2,6 +2,44 @@
  * Build a billing POS cart line from a catalog product and optional variant picker payload.
  */
 import { normalizeProductForSale, isProductVariantsEnabled } from './moduleFeatures';
+import { firstFiniteMoney } from './saleUnitPrice';
+
+/**
+ * Resolve the catalog selling-price floor from a holding / open-for-correction
+ * sale item (nested product + optional variant), not the charged unit price.
+ *
+ * Prefers product/variant list selling, then MRP, then charged ``unit_price``
+ * only when catalog fields are absent — so a markup on the sale does not lock
+ * rectify edits to that markup.
+ *
+ * Args:
+ *   item: Holding sale item from SaleSerializer (product + unit_price required
+ *     in practice; empty object tolerated). Max nested depth ~3.
+ *
+ * Returns:
+ *   Finite catalog unit price, or NaN when nothing usable is present.
+ */
+export function resolveHoldingCatalogUnitPrice(item) {
+  const product =
+    item?.product && typeof item.product === 'object' ? item.product : {};
+  const variantsOn = isProductVariantsEnabled();
+  const variant =
+    variantsOn && item?.variant && typeof item.variant === 'object'
+      ? item.variant
+      : {};
+  return firstFiniteMoney(
+    variant.effective_price,
+    variant.selling_price,
+    variant.price,
+    product.selling_price,
+    product.price,
+    item?.catalog_unit_price,
+    variant.effective_mrp,
+    variant.mrp,
+    product.mrp,
+    item?.unit_price
+  );
+}
 
 export function resolveCartVariantId(productId, variantPayload) {
   if (variantPayload == null) return null;
@@ -82,7 +120,21 @@ function capLineQuantity(line, validateStock = true) {
   return line;
 }
 
-/** Rebuild a billing cart line from a server holding sale item. */
+/**
+ * Rebuild a billing cart line from a server holding / open-for-correction item.
+ *
+ * Stamps ``catalog_price`` / ``selling_price`` from catalog (product/variant),
+ * and ``price`` from the charged ``unit_price`` so rectify can edit markup
+ * down toward list without locking the floor at the charged amount.
+ *
+ * Args:
+ *   item (object): Sale item payload with ``unit_price``, optional nested
+ *     ``product`` / ``variant``. Quantity 1–1e6 when present.
+ *   options.validateStock (boolean): When true, cap qty to ``stock_quantity``.
+ *
+ * Returns:
+ *   Cart line object ready for billing POS / Correction Mode.
+ */
 export function holdingSaleItemToCartLine(item, { validateStock = true } = {}) {
   const product = item.product || {};
   const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
@@ -97,11 +149,14 @@ export function holdingSaleItemToCartLine(item, { validateStock = true } = {}) {
     has_variants: product.has_variants,
     variants: product.variants,
   });
-  const selling = parseFloat(item.unit_price);
-  const catalogPrice = parseFloat(
-    product.selling_price ?? product.price ?? item.unit_price
-  );
-  const mrp = parseFloat(product.mrp) || selling;
+  const charged = parseFloat(item.unit_price);
+  const catalogPrice = resolveHoldingCatalogUnitPrice(item);
+  const catalog = Number.isFinite(catalogPrice)
+    ? catalogPrice
+    : Number.isFinite(charged)
+      ? charged
+      : 0;
+  const mrp = firstFiniteMoney(product.mrp, item.variant?.effective_mrp, item.variant?.mrp, catalog);
   const variantId = isProductVariantsEnabled()
     ? item.variant?.id || item.variant_id || null
     : null;
@@ -113,10 +168,12 @@ export function holdingSaleItemToCartLine(item, { validateStock = true } = {}) {
       variant: item.variant || null,
       size_name: item.size_name || item.variant?.size_name || null,
       color_name: item.color_name || item.variant?.color_name || null,
-      mrp,
-      selling_price: selling,
-      catalog_price: Number.isFinite(catalogPrice) ? catalogPrice : selling,
-      price: selling,
+      mrp: Number.isFinite(mrp) ? mrp : catalog,
+      // Catalog list selling stays on selling_price / catalog_price; charged
+      // override lives only on price so rectify can lower markup toward list.
+      selling_price: catalog,
+      catalog_price: catalog,
+      price: Number.isFinite(charged) ? charged : catalog,
     },
     validateStock
   );

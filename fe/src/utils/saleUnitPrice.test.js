@@ -1,9 +1,28 @@
 import {
+  firstFiniteMoney,
   isSaleUnitPriceOverrideAllowed,
+  lineCatalogFloor,
   saleUnitPriceOverrideError,
 } from './saleUnitPrice';
 
 describe('saleUnitPrice', () => {
+  it('firstFiniteMoney skips empty values', () => {
+    expect(firstFiniteMoney(null, '', undefined, '1800')).toBe(1800);
+    expect(firstFiniteMoney()).toBeNaN();
+  });
+
+  it('lineCatalogFloor prefers catalog_price over charged price', () => {
+    expect(
+      lineCatalogFloor({
+        catalog_price: 1800,
+        selling_price: 1800,
+        price: 17600,
+      })
+    ).toBe(1800);
+    expect(lineCatalogFloor({ price: 50 })).toBe(50);
+    expect(lineCatalogFloor(null)).toBeNaN();
+  });
+
   it('allows charging catalog price or higher', () => {
     expect(
       isSaleUnitPriceOverrideAllowed({

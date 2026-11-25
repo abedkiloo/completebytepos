@@ -773,8 +773,9 @@ export function usePOSState({ sendForApproval = false, resumeSaleId = null } = {
           ? {
               ...i,
               price: nextPrice,
-              selling_price: nextPrice,
+              // Keep catalog floor stable; only the charged unit price changes.
               catalog_price: i.catalog_price ?? catalog,
+              selling_price: i.catalog_price ?? i.selling_price ?? catalog,
             }
           : i
       )
