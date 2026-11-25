@@ -14,6 +14,31 @@ export function reportsEnableProductReports(settings) {
   return isModuleFlagEnabled(settings, 'enable_product_reports', true);
 }
 
+/**
+ * Product monthly trends on the product desk (setting + package feature).
+ *
+ * @param {object} [settings] Reports ModuleSetting map from cache.
+ * @returns {boolean}
+ */
+export function reportsProductTrendsEnabled(settings) {
+  if (!reportsEnableProductReports(settings)) return false;
+  return isModuleFeatureEnabled('reports', 'product_trends', true);
+}
+
+/**
+ * Whether the viewer may open product performance charts.
+ *
+ * @param {Array<{module?: string, action?: string}>} [permissions]
+ * @param {object} [settings] Reports module settings.
+ * @returns {boolean}
+ */
+export function userMayViewProductTrends(permissions = [], settings = {}) {
+  const canView = (permissions || []).some(
+    (p) => p.module === 'reports' && p.action === 'view'
+  );
+  return canView && reportsProductTrendsEnabled(settings);
+}
+
 export function reportsEnableInventoryReports(settings) {
   return isModuleFlagEnabled(settings, 'enable_inventory_reports', true);
 }

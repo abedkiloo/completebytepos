@@ -17,6 +17,7 @@ import { proposedPendingCost } from '../../utils/makerChecker';
 import PendingApprovalBadges from '../Approvals/PendingApprovalBadges';
 import { ProductImageThumb } from '../Shared/ProductImageLightbox';
 import StockHistoryModal from '../Inventory/StockHistoryModal';
+import ProductTrendsPanel from './ProductTrendsPanel';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Skeleton } from '../ui/skeleton';
@@ -44,6 +45,7 @@ export default function ProductDetailPanel({
   productModuleSettings = {},
   storeSettings = {},
   canViewStockHistory = false,
+  canViewProductTrends = false,
   showMovementCost = true,
 }) {
   const [product, setProduct] = useState(null);
@@ -84,7 +86,10 @@ export default function ProductDetailPanel({
     if (!canViewStockHistory && tab === 'history') {
       setTab('details');
     }
-  }, [canViewStockHistory, tab]);
+    if (!canViewProductTrends && tab === 'performance') {
+      setTab('details');
+    }
+  }, [canViewStockHistory, canViewProductTrends, tab]);
 
   const variants = product?.variants || [];
   const focusedVariant = useMemo(() => {
@@ -100,7 +105,10 @@ export default function ProductDetailPanel({
   const showVariantFinancialCols =
     visibility.showPricing || visibility.showCost || visibility.showStock;
 
-  const panelWide = canViewStockHistory && tab === 'history';
+  const showTabs = canViewStockHistory || canViewProductTrends;
+  const panelWide =
+    (canViewStockHistory && tab === 'history') ||
+    (canViewProductTrends && tab === 'performance');
   const viewingVariant = Boolean(focusedVariant);
 
   return (
@@ -117,7 +125,7 @@ export default function ProductDetailPanel({
           </button>
         </div>
 
-        {canViewStockHistory && product && !loading && !error ? (
+        {showTabs && product && !loading && !error ? (
           <div
             className="flex gap-1 border-b px-4 pt-1"
             role="tablist"
@@ -137,21 +145,40 @@ export default function ProductDetailPanel({
             >
               Details
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'history'}
-              data-testid="product-stock-history-tab"
-              className={cn(
-                'px-3 py-2 text-sm font-medium border-b-2 -mb-px',
-                tab === 'history'
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-muted-foreground'
-              )}
-              onClick={() => setTab('history')}
-            >
-              Stock history
-            </button>
+            {canViewProductTrends ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'performance'}
+                data-testid="product-performance-tab"
+                className={cn(
+                  'px-3 py-2 text-sm font-medium border-b-2 -mb-px',
+                  tab === 'performance'
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-muted-foreground'
+                )}
+                onClick={() => setTab('performance')}
+              >
+                Performance
+              </button>
+            ) : null}
+            {canViewStockHistory ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'history'}
+                data-testid="product-stock-history-tab"
+                className={cn(
+                  'px-3 py-2 text-sm font-medium border-b-2 -mb-px',
+                  tab === 'history'
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-muted-foreground'
+                )}
+                onClick={() => setTab('history')}
+              >
+                Stock history
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -170,6 +197,11 @@ export default function ProductDetailPanel({
               embedded
               showCost={showMovementCost}
               onClose={onClose}
+            />
+          ) : product && tab === 'performance' && canViewProductTrends ? (
+            <ProductTrendsPanel
+              productId={product.id}
+              variantId={focusedVariantId}
             />
           ) : product ? (
             <>

@@ -13,6 +13,7 @@ REPORT_ACTION_GATES: dict[str, tuple[str, str]] = {
     'sales_by_person': ('enable_sales_reports', 'Sales reports'),
     'products': ('enable_product_reports', 'Product reports'),
     'top_products': ('enable_product_reports', 'Product reports'),
+    'product_trends': ('enable_product_reports', 'Product reports'),
     'inventory': ('enable_inventory_reports', 'Inventory reports'),
     'inventory_health': ('enable_inventory_reports', 'Inventory reports'),
     'stock_valuation': ('enable_inventory_reports', 'Stock valuation'),
@@ -47,6 +48,21 @@ def reports_enable_sales_reports() -> bool:
 
 def reports_enable_product_reports() -> bool:
     return _enabled('enable_product_reports', True)
+
+
+def reports_product_trends_enabled() -> bool:
+    """
+    Product monthly trends on the product desk.
+
+    Returns:
+        bool: True when product reports setting and ``product_trends``
+        catalog feature are both on. No writes.
+    """
+    if not reports_enable_product_reports():
+        return False
+    from reports.product_trends import product_trends_feature_enabled
+
+    return product_trends_feature_enabled()
 
 
 def reports_enable_inventory_reports() -> bool:
@@ -113,6 +129,8 @@ def reports_action_enabled(action_name: str) -> bool:
         'trading_profit_breakdown',
     ):
         return is_module_feature_enabled(MODULE, 'trading_profit')
+    if action_name == 'product_trends':
+        return is_module_feature_enabled(MODULE, 'product_trends')
     return True
 
 

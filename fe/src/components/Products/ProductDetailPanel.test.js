@@ -1,14 +1,31 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import ProductDetailPanel from './ProductDetailPanel';
-import { productsAPI, inventoryAPI } from '../../services/api';
+import { productsAPI, inventoryAPI, reportsAPI } from '../../services/api';
 
 jest.mock('../../services/api', () => ({
   productsAPI: { get: jest.fn() },
   inventoryAPI: { productHistory: jest.fn() },
+  reportsAPI: { productTrends: jest.fn() },
 }));
 
 jest.mock('../Approvals/PendingApprovalBadges', () => () => null);
+
+jest.mock('recharts', () => ({
+  ResponsiveContainer: ({ children }) => <div data-testid="chart">{children}</div>,
+  LineChart: ({ children }) => <div>{children}</div>,
+  BarChart: ({ children }) => <div>{children}</div>,
+  PieChart: ({ children }) => <div>{children}</div>,
+  Pie: () => null,
+  Cell: () => null,
+  Line: () => null,
+  Bar: () => null,
+  XAxis: () => null,
+  YAxis: () => null,
+  Tooltip: () => null,
+  Legend: () => null,
+  CartesianGrid: () => null,
+}));
 
 const fieldAccess = {
   catalog: true,
@@ -70,7 +87,10 @@ describe('ProductDetailPanel stock history tab', () => {
         screen.getByText(/Previous stock 400 · Sold 45 · New stock 355/)
       ).toBeInTheDocument()
     );
-    expect(inventoryAPI.productHistory).toHaveBeenCalledWith(7, {});
+    expect(inventoryAPI.productHistory).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ page: 1 })
+    );
   });
 
   it('hides Stock history tab when not permitted', async () => {
@@ -84,6 +104,79 @@ describe('ProductDetailPanel stock history tab', () => {
     );
     await waitFor(() => expect(screen.getByText('Widget')).toBeInTheDocument());
     expect(screen.queryByTestId('product-stock-history-tab')).not.toBeInTheDocument();
+  });
+});
+
+describe('ProductDetailPanel performance tab', () => {
+  beforeEach(() => {
+    productsAPI.get.mockResolvedValue({
+      data: {
+        id: 7,
+        name: 'Widget',
+        sku: 'W-1',
+        track_stock: true,
+        stock_quantity: 10,
+        has_variants: false,
+        is_active: true,
+      },
+    });
+    reportsAPI.productTrends.mockResolvedValue({
+      data: {
+        product_id: 7,
+        months_requested: 12,
+        months: [
+          {
+            month: '2026-11',
+            label: 'Nov 2026',
+            quantity_sold: 3,
+            revenue: '90.00',
+            order_count: 1,
+            quantity_received: 5,
+          },
+        ],
+        channels: [],
+        summary: {
+          quantity_sold: 3,
+          revenue: '90.00',
+          avg_monthly_quantity: 3,
+          best_month_label: 'Nov 2026',
+        },
+      },
+    });
+  });
+
+  it('shows Performance tab and loads charts when permitted', async () => {
+    render(
+      <ProductDetailPanel
+        productId={7}
+        fieldAccess={fieldAccess}
+        canViewProductTrends
+        onClose={() => {}}
+      />
+    );
+    await waitFor(() => expect(screen.getByText('Widget')).toBeInTheDocument());
+    expect(screen.getByTestId('product-performance-tab')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('product-performance-tab'));
+    await waitFor(() =>
+      expect(screen.getByTestId('product-trends-panel')).toBeInTheDocument()
+    );
+    expect(reportsAPI.productTrends).toHaveBeenCalledWith({
+      product_id: 7,
+      months: 12,
+    });
+  });
+
+  it('hides Performance tab when not permitted', async () => {
+    render(
+      <ProductDetailPanel
+        productId={7}
+        fieldAccess={fieldAccess}
+        canViewProductTrends={false}
+        onClose={() => {}}
+      />
+    );
+    await waitFor(() => expect(screen.getByText('Widget')).toBeInTheDocument());
+    expect(screen.queryByTestId('product-performance-tab')).not.toBeInTheDocument();
   });
 });
 

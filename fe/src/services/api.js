@@ -709,6 +709,7 @@ export const reportsAPI = {
   // ?period=today|week|month query param.
   salesOverview: (params) => api.get('/reports/sales_overview/', { params }),
   topProducts: (params) => api.get('/reports/top_products/', { params }),
+  productTrends: (params) => api.get('/reports/product-trends/', { params }),
   cashAndPayments: (params) => api.get('/reports/cash_and_payments/', { params }),
   inventoryHealth: (params) => api.get('/reports/inventory_health/', { params }),
   stockValuation: (params) => api.get('/reports/stock_valuation/', { params }),

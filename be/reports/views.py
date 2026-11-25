@@ -111,6 +111,7 @@ REPORTS_PERMS = RequirePermPerAction('reports', {
     'annual': 'view',
     'sales_overview': 'view',
     'top_products': 'view',
+    'product_trends': 'view',
     'cash_and_payments': 'view',
     'inventory_health': 'view',
     'customer_outstanding': 'view',
@@ -916,6 +917,64 @@ class ReportViewSet(viewsets.ViewSet):
             'by_payment_method': by_pm,
             'trend': trend,
         })
+
+    @action(detail=False, methods=['get'], url_path='product-trends')
+    @gated_report_action('product_trends')
+    def product_trends(self, request):
+        """
+        Month-over-month sales and receiving for one product.
+
+        Query params:
+            product_id: required positive product id.
+            months: 1–24 calendar months (default 12).
+            variant_id: optional positive variant id.
+
+        Returns:
+            Response: monthly series, channel mix, and summary. 400 when
+            product_id is missing or invalid.
+        """
+        from products.models import Product
+        from reports.product_trends import build_product_trends
+
+        raw_id = request.query_params.get('product_id')
+        try:
+            product_id = int(raw_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'error': 'Choose a product to see trends.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if product_id < 1 or not Product.objects.filter(pk=product_id).exists():
+            return Response(
+                {'error': 'Product not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        variant_raw = request.query_params.get('variant_id')
+        variant_id = None
+        if variant_raw not in (None, ''):
+            try:
+                variant_id = int(variant_raw)
+            except (TypeError, ValueError):
+                return Response(
+                    {'error': 'Variant must be a positive number.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        try:
+            months = int(request.query_params.get('months') or 12)
+        except (TypeError, ValueError):
+            months = 12
+        try:
+            payload = build_product_trends(
+                product_id=product_id,
+                months=months,
+                variant_id=variant_id,
+            )
+        except ValueError as exc:
+            return Response({'error': str(exc)[:200]}, status=status.HTTP_400_BAD_REQUEST)
+        product = Product.objects.filter(pk=product_id).only('id', 'name', 'sku').first()
+        payload['name'] = (product.name if product else '')[:200]
+        payload['sku'] = (product.sku if product and product.sku else '')[:100]
+        return Response(payload)
 
     @action(detail=False, methods=['get'])
     @gated_report_action('top_products')

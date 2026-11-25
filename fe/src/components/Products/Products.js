@@ -77,6 +77,8 @@ import {
 } from '../../utils/productDisplay';
 import { canViewProductStockHistory } from '../../utils/stockHistory';
 import { inventoryShowMovementCost } from '../../utils/inventoryDisplay';
+import { getStoredAuth } from '../../utils/roleAccess';
+import { userMayViewProductTrends } from '../../utils/reportDisplay';
 
 const PERMANENT_DELETE_MESSAGE =
   'Use this for a product added in error. It is removed for good and cannot be undone. ' +
@@ -101,7 +103,9 @@ const Products = () => {
   const { settings: storeSettings } = useStoreSettings();
   const { settings: productModuleSettings } = useModuleSettings('products');
   const { settings: inventoryModuleSettings } = useModuleSettings('inventory');
+  const { settings: reportsModuleSettings } = useModuleSettings('reports');
   const persona = getPersonaFromStorage();
+  const { permissions } = getStoredAuth();
   const fieldAccess = resolveProductFieldAccess(
     persona,
     productModuleSettings,
@@ -124,6 +128,10 @@ const Products = () => {
     persona,
     inventorySettings: inventoryModuleSettings,
   });
+  const canViewProductTrends = userMayViewProductTrends(
+    permissions,
+    reportsModuleSettings
+  );
   const showMovementCost = inventoryShowMovementCost(inventoryModuleSettings) && userMaySeeProductCost();
 
   // --- Data ---
@@ -818,6 +826,7 @@ const Products = () => {
           productModuleSettings={productModuleSettings}
           storeSettings={storeSettings}
           canViewStockHistory={canViewStockHistory}
+          canViewProductTrends={canViewProductTrends}
           showMovementCost={showMovementCost}
           onClose={() => setViewTarget(null)}
           onEdit={(fullProduct) => {
