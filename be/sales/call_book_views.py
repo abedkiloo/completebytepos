@@ -181,14 +181,24 @@ class CallBookMarkView(APIView):
         Raises:
             None.
         """
-        code, payload = mark_called(
-            customer_id=customer_id,
-            user=request.user,
-            outcome=(request.data.get('outcome') or ''),
-            request_summary=request.data.get('request_summary') or '',
-            follow_up_on=request.data.get('follow_up_on') or '',
-            follow_up_time=request.data.get('follow_up_time') or '',
-        )
+        try:
+            code, payload = mark_called(
+                customer_id=customer_id,
+                user=request.user,
+                outcome=(request.data.get('outcome') or ''),
+                request_summary=request.data.get('request_summary') or '',
+                follow_up_on=request.data.get('follow_up_on') or '',
+                follow_up_time=request.data.get('follow_up_time') or '',
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'call-book mark failed for customer_id=%s', customer_id,
+            )
+            return Response(
+                {'error': 'Could not save this call. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         if code == 'ok':
             from sales.models import Customer
             from utils.audit_events import log_call_write
@@ -207,6 +217,11 @@ class CallBookMarkView(APIView):
                 },
             )
         http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
+        # Always expose a string ``error`` for non-OK so web/mobile toasts
+        # never fall back to a generic "Could not save" when DRF would only
+        # have put the message under another key.
+        if code != 'ok' and isinstance(payload, dict) and not payload.get('error'):
+            payload = {**payload, 'error': 'Could not save this call.'}
         return Response(payload, status=http)
 
 

@@ -4,6 +4,7 @@ import { Check, Clock, Copy, PhoneOff, Search, X } from 'lucide-react';
 import { customersAPI } from '../../services/api';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { DEFAULT_PAGE_SIZE } from '../../config/pagination';
+import { formatApiError } from '../../utils/apiErrors';
 import { toast } from '../../utils/toast';
 import { isManagerOrAdminFromStorage } from '../../utils/roleAccess';
 import {
@@ -718,7 +719,7 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
     try {
       await customersAPI.holdCall(row.customer_id);
     } catch (error) {
-      toast.error(error?.response?.data?.error || 'Could not reserve this customer.');
+      toast.error(formatApiError(error, 'Could not reserve this customer.'));
       return;
     }
     try {
@@ -739,13 +740,13 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
       const { data } = await customersAPI.markCall(row.customer_id, {
         outcome,
         request_summary: summary,
-        follow_up_on: followUp,
+        follow_up_on: followUp || '',
         follow_up_time: outcome === 'ask_later' ? followUpTime : '',
       });
       toast.success(data?.updated ? 'Call notes updated.' : 'Call recorded.');
       onSaved();
     } catch (error) {
-      toast.error(error?.response?.data?.error || 'Could not save this call.');
+      toast.error(formatApiError(error, 'Could not save this call.'));
     } finally {
       setSaving(false);
     }

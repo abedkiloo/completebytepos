@@ -1022,13 +1022,20 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
     summary = (request_summary or '').strip()
     if len(summary) > SUMMARY_MAX:
         return 'too_long', {'error': 'Request summary must be 500 characters or fewer.'}
+    follow_up = None
+    clock = None
     try:
         follow_up = _parse_follow_up(follow_up_on, day)
         clock = _parse_clock(follow_up_time)
     except ValueError as exc:
-        if str(exc) == 'time':
-            return 'bad_time', {'error': 'Call later needs a time, as HH:MM.'}
-        return 'bad_date', {'error': 'Follow-up must be today or within 90 days.'}
+        # Call later needs a valid day/time. Other outcomes still save notes —
+        # drop a bad optional follow-up instead of blocking the whole record.
+        if outcome == CustomerCall.OUTCOME_ASK_LATER:
+            if str(exc) == 'time':
+                return 'bad_time', {'error': 'Call later needs a time, as HH:MM.'}
+            return 'bad_date', {'error': 'Follow-up must be today or within 90 days.'}
+        follow_up = None
+        clock = None
     follow_at = None
     if outcome == CustomerCall.OUTCOME_ASK_LATER:
         if clock is None:
@@ -1036,7 +1043,8 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
         follow_up = follow_up or day
         follow_at = _combine_follow_up(follow_up, clock)
     else:
-        # Non–call-later outcomes clear a previous call-later schedule.
+        # Non–call-later outcomes clear a previous call-later schedule time.
+        # An optional follow-up day is kept when it parsed cleanly.
         follow_at = None
     monday = week_monday(day)
     with transaction.atomic():

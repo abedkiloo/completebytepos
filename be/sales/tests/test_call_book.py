@@ -282,11 +282,22 @@ class CallBookCorrectedTests(SuperAdminAPITestCase):
             book = self.client.get('/api/sales/call-book/', {'scope': 'week'}).json()
             late = self.client.post(
                 f'/api/sales/call-book/{shop.id}/mark/',
-                {'outcome': 'called', 'follow_up_on': '2027-06-01', 'request_summary': shop.phone},
+                {
+                    'outcome': 'called',
+                    'follow_up_on': '2027-06-01',
+                    'request_summary': 'Reached them about the handle',
+                },
                 format='json',
             )
-        self.assertEqual(late.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertNotIn(shop.phone, late.json().get('error', ''))
+            # Called + invalid optional follow-up still saves notes (date dropped).
+            self.assertEqual(late.status_code, status.HTTP_200_OK, late.content)
+            self.assertTrue(late.json().get('updated'))
+            self.assertEqual(late.json().get('follow_up_on'), '')
+            self.assertEqual(
+                late.json().get('request_summary'),
+                'Reached them about the handle',
+            )
+            self.assertNotIn(shop.phone, late.content.decode())
         self.assertEqual(len(book['summary']['days']), 5)
         self.assertEqual(sum(item['called'] for item in book['summary']['days']), 1)
 
@@ -1226,3 +1237,43 @@ class CallBookNoteUpdateTests(SuperAdminAPITestCase):
             CustomerCall.objects.get(customer=shop).request_summary,
             'n119',
         )
+
+    def test_corrected_called_with_follow_up_date_like_screenshot(self):
+        """Screenshot: Called + notes + follow-up tomorrow must save on a weekday."""
+        from sales.call_book import mark_called
+
+        wednesday = date(2026, 11, 25)
+        shop = _customer(
+            'Handle Shop',
+            '0718000916',
+            county='Nairobi',
+            sub_county='Starehe',
+            ward='Landimawe',
+        )
+        with patch('sales.call_book.nairobi_today', return_value=wednesday):
+            code, payload = mark_called(
+                customer_id=shop.id,
+                user=self.admin,
+                outcome='called',
+                request_summary=(
+                    'Called him updated him about the handle, he will visiting '
+                    'the shop to see them physically'
+                ),
+                follow_up_on='2026-11-26',
+                today=wednesday,
+            )
+            http = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {
+                    'outcome': 'called',
+                    'request_summary': 'Updated handle note',
+                    'follow_up_on': '2026-11-26',
+                },
+                format='json',
+            )
+        self.assertEqual(code, 'ok')
+        self.assertFalse(payload.get('updated'))
+        self.assertEqual(payload.get('follow_up_on'), '2026-11-26')
+        self.assertEqual(http.status_code, status.HTTP_200_OK, http.content)
+        self.assertTrue(http.json().get('updated'))
+        self.assertNotIn(shop.phone, http.content.decode())

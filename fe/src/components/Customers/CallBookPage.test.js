@@ -218,6 +218,27 @@ describe('CallBookPage', () => {
     expect(customersAPI.markCall).not.toHaveBeenCalled();
   });
 
+  test('corrected: save failure shows API detail not a generic toast', async () => {
+    const { toast } = require('../../utils/toast');
+    customersAPI.markCall.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          detail: 'Amina already called this customer today. Only one person can call them on this day.',
+        },
+      },
+    });
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    await userEvent.click(screen.getByRole('button', { name: 'Save record' }));
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringMatching(/Amina already called this customer today/i),
+      );
+    });
+    expect(toast.error).not.toHaveBeenCalledWith('Could not save this call.');
+  });
+
   test('shows a due call-later customer first on load', async () => {
     customersAPI.callBook.mockResolvedValue({
       data: {

@@ -33,6 +33,12 @@ describe('formatApiError', () => {
   });
 
   it('returns fallback for empty object payload', () => {
-    expect(formatApiError({ response: { data: {} } }, 'fallback')).toBe('fallback');
-  });
+  expect(formatApiError({ response: { data: {} } }, 'fallback')).toBe('fallback');
+  expect(
+    formatApiError({ response: { status: 500, data: '<html>traceback</html>' } }, 'Could not save')
+  ).toBe('Could not save (500)');
+  expect(
+    formatApiError({ response: { status: 403, data: {} } }, 'Could not save this call.')
+  ).toBe('Could not save this call. (403)');
+});
 });

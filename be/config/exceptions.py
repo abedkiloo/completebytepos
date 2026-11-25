@@ -55,6 +55,7 @@ def custom_exception_handler(exc, context):
         _audit_permission_denied(exc, context)
 
     if response is not None:
+        _mirror_detail_as_error(response)
         request = context.get('request')
         if request:
             origin = request.META.get('HTTP_ORIGIN')
@@ -83,6 +84,34 @@ def custom_exception_handler(exc, context):
                         response['Access-Control-Allow-Headers'] = ', '.join(headers)
 
     return response
+
+
+def _mirror_detail_as_error(response) -> None:
+    """
+    Copy DRF ``detail`` onto ``error`` so older web toasts show the reason.
+
+    Call-book and other screens historically read ``response.data.error`` only.
+    Permission denials and many 4xx bodies only set ``detail``, which became a
+    generic "Could not save this call." toast. Mutates ``response.data`` in
+    place when it is a dict missing ``error``. Never raises.
+    """
+    try:
+        data = getattr(response, 'data', None)
+        if not isinstance(data, dict):
+            return
+        if data.get('error'):
+            return
+        detail = data.get('detail')
+        if detail is None:
+            return
+        if isinstance(detail, (list, tuple)):
+            text = ' '.join(str(part).strip() for part in detail if str(part).strip())
+        else:
+            text = str(detail).strip()
+        if text:
+            data['error'] = text[:500]
+    except Exception:
+        logger.exception('Failed to mirror detail as error')
 
 
 def _audit_permission_denied(exc, context) -> None:
