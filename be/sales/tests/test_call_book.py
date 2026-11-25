@@ -13,6 +13,7 @@ from accounts.models import AuditLog, Role, UserProfile
 from accounts.role_definitions import (
     ROLE_DELIVERY_AGENT,
     ROLE_FIELD_AGENT,
+    ROLE_SALES,
     ensure_permissions,
     sync_default_roles,
 )
@@ -1063,3 +1064,165 @@ class CallBookDayClaimAndPriorityTests(SuperAdminAPITestCase):
         self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
         self.assertNotIn(shop.phone, blocked.content.decode())
         self.assertNotIn('Secret', blocked.content.decode())
+
+
+class CallBookNoteUpdateTests(SuperAdminAPITestCase):
+    """Corrected: staff can update this week's call notes without a second row."""
+
+    def setUp(self):
+        super().setUp()
+        _enable_call_book(True)
+
+    def test_unit_mark_called_updates_own_week_note(self):
+        from sales.call_book import mark_called
+        from sales.models import CustomerCall
+
+        shop = _customer('Note Update Duka', '0718000910')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            first, payload = mark_called(
+                customer_id=shop.id,
+                user=self.admin,
+                outcome='called',
+                request_summary='First note',
+                today=MONDAY,
+            )
+            second, updated = mark_called(
+                customer_id=shop.id,
+                user=self.admin,
+                outcome='ask_later',
+                request_summary='Corrected note',
+                follow_up_time='14:30',
+                today=MONDAY,
+            )
+        self.assertEqual(first, 'ok')
+        self.assertFalse(payload.get('updated'))
+        self.assertEqual(second, 'ok')
+        self.assertTrue(updated.get('updated'))
+        self.assertEqual(updated['request_summary'], 'Corrected note')
+        self.assertEqual(CustomerCall.objects.filter(customer=shop).count(), 1)
+        row = CustomerCall.objects.get(customer=shop)
+        self.assertEqual(row.outcome, 'ask_later')
+        self.assertEqual(row.request_summary, 'Corrected note')
+
+    def test_integration_http_update_note_and_audit(self):
+        shop = _customer('HTTP Note Shop', '0718000911')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            created = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'request_summary': 'Draft note'},
+                format='json',
+            )
+            revised = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'request_summary': 'Final note for zippers'},
+                format='json',
+            )
+            book = self.client.get(
+                '/api/sales/call-book/',
+                {'scope': 'week', 'status': 'all', 'search': 'HTTP Note'},
+            ).json()
+        self.assertEqual(created.status_code, status.HTTP_200_OK)
+        self.assertFalse(created.json().get('updated'))
+        self.assertEqual(revised.status_code, status.HTTP_200_OK)
+        self.assertTrue(revised.json().get('updated'))
+        self.assertEqual(revised.json()['request_summary'], 'Final note for zippers')
+        row = next(item for item in book['results'] if item['customer_id'] == shop.id)
+        self.assertEqual(row['request_summary'], 'Final note for zippers')
+        self.assertEqual(CustomerCall.objects.filter(customer=shop).count(), 1)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action='call_updated',
+                object_id=str(shop.id),
+            ).exists()
+        )
+        self.assertNotIn(shop.phone, revised.content.decode())
+
+    def test_security_other_user_cannot_overwrite_todays_call(self):
+        shop = _customer('Owned Note', '0718000912')
+        other = User.objects.create_user(username='note_other', password='x')
+        ensure_permissions()
+        sync_default_roles()
+        UserProfile.objects.create(
+            user=other,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+            is_active=True,
+        )
+        other_client = APIClient()
+        from rest_framework_simplejwt.tokens import RefreshToken
+        token = RefreshToken.for_user(other)
+        other_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            mine = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'request_summary': 'Mine'},
+                format='json',
+            )
+            theirs = other_client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'request_summary': shop.phone},
+                format='json',
+            )
+        self.assertEqual(mine.status_code, status.HTTP_200_OK)
+        self.assertEqual(theirs.status_code, status.HTTP_409_CONFLICT)
+        self.assertNotIn(shop.phone, theirs.content.decode())
+        self.assertEqual(
+            CustomerCall.objects.get(customer=shop).request_summary,
+            'Mine',
+        )
+
+    def test_security_unauthenticated_update_denied(self):
+        shop = _customer('Anon Note', '0718000913')
+        anon = APIClient()
+        denied = anon.post(
+            f'/api/sales/call-book/{shop.id}/mark/',
+            {'outcome': 'called', 'request_summary': 'leak'},
+            format='json',
+        )
+        self.assertEqual(denied.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn('leak', denied.content.decode())
+
+    def test_module_feature_off_blocks_note_update(self):
+        shop = _customer('Feature Off Note', '0718000914')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'request_summary': 'Keep'},
+                format='json',
+            )
+        _enable_call_book(False)
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            blocked = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'request_summary': 'Nope'},
+                format='json',
+            )
+        self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_stress_repeated_note_updates_stay_one_row(self):
+        from sales.call_book import mark_called
+
+        shop = _customer('Stress Note', '0718000915')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            mark_called(
+                customer_id=shop.id,
+                user=self.admin,
+                outcome='called',
+                request_summary='n0',
+                today=MONDAY,
+            )
+            for index in range(120):
+                code, payload = mark_called(
+                    customer_id=shop.id,
+                    user=self.admin,
+                    outcome='called',
+                    request_summary=f'n{index}',
+                    today=MONDAY,
+                )
+                self.assertEqual(code, 'ok')
+                self.assertTrue(payload['updated'])
+        self.assertEqual(CustomerCall.objects.filter(customer=shop).count(), 1)
+        self.assertEqual(
+            CustomerCall.objects.get(customer=shop).request_summary,
+            'n119',
+        )

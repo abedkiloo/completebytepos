@@ -983,7 +983,12 @@ def _hold_payload(hold, viewer_id: int | None) -> dict:
 
 def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, follow_up_on=None, follow_up_time=None, today: date | None = None) -> tuple[str, dict]:
     """
-    Record a call for this week.
+    Record or update a call for this week.
+
+    When this staff member already has a ``CustomerCall`` for the customer in
+    the current Monday–Sunday week, that row is updated (outcome, notes,
+    follow-up) instead of inserting a second row. That is how web and mobile
+    correct a note after save.
 
     Args:
         customer_id: Active customer primary key. Positive integer.
@@ -1001,8 +1006,10 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
         tuple: ``(code, payload)``. Codes are ``ok``, ``weekend``,
         ``not_found``, ``no_phone``, ``bad_outcome``, ``too_long``,
         ``held``, ``called_today``, ``bad_date``, or ``bad_time``.
-        Payloads never include the phone number. Side effect on ``ok``:
-        inserts one ``CustomerCall`` and deletes any hold on that customer.
+        On ``ok``, payload includes ``updated`` (True when an existing week
+        row was edited). Payloads never include the phone number. Side
+        effect on ``ok``: insert or update one ``CustomerCall`` and delete
+        any hold on that customer.
 
     Raises:
         None. Failures are returned as codes.
@@ -1028,6 +1035,10 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
             return 'bad_time', {'error': 'Call later needs a time, as HH:MM.'}
         follow_up = follow_up or day
         follow_at = _combine_follow_up(follow_up, clock)
+    else:
+        # Non–call-later outcomes clear a previous call-later schedule.
+        follow_at = None
+    monday = week_monday(day)
     with transaction.atomic():
         customer = (
             Customer.objects.select_for_update()
@@ -1068,20 +1079,47 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
                 ),
                 'called_by': _display_name(prior_today.called_by),
             }
-        CustomerCall.objects.create(
-            customer=customer,
-            called_by=user,
-            called_at=now,
-            week_start=week_monday(day),
-            outcome=outcome,
-            request_summary=summary,
-            follow_up_on=follow_up,
-            follow_up_at=follow_at,
+        existing = (
+            CustomerCall.objects.select_for_update()
+            .filter(
+                customer=customer,
+                week_start=monday,
+                called_by_id=user.id,
+            )
+            .order_by('-called_at')
+            .first()
         )
+        updated = False
+        if existing is not None:
+            existing.outcome = outcome
+            existing.request_summary = summary
+            existing.follow_up_on = follow_up
+            existing.follow_up_at = follow_at
+            existing.save(
+                update_fields=[
+                    'outcome',
+                    'request_summary',
+                    'follow_up_on',
+                    'follow_up_at',
+                ]
+            )
+            updated = True
+        else:
+            CustomerCall.objects.create(
+                customer=customer,
+                called_by=user,
+                called_at=now,
+                week_start=monday,
+                outcome=outcome,
+                request_summary=summary,
+                follow_up_on=follow_up,
+                follow_up_at=follow_at,
+            )
         if hold is not None:
             hold.delete()
     return 'ok', {
         'called_this_week': True,
+        'updated': updated,
         'outcome': outcome,
         'request_summary': summary,
         'follow_up_on': follow_up.isoformat() if follow_up else '',

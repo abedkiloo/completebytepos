@@ -623,8 +623,8 @@ def log_call_write(request, customer, *, kind: str, detail: dict | None = None) 
     Args:
         request: Actor request.
         customer: Customer row, or None for a plan change.
-        kind: ``marked``, ``held``, or ``plan``. Other text uses
-            ``call_updated``.
+        kind: ``marked``, ``updated``, ``held``, or ``plan``. Other text
+            also uses ``call_updated``.
         detail: Optional notes. Keys containing ``phone`` are dropped.
             Text values are capped at 200 characters. At most 8 keys.
 
@@ -635,9 +635,12 @@ def log_call_write(request, customer, *, kind: str, detail: dict | None = None) 
         One AuditLog row on the customers module. The label uses the
         customer name and code, never the phone.
     """
-    verb = {'marked': 'call_marked', 'held': 'call_held', 'plan': 'call_plan_saved'}.get(
-        kind, 'call_updated',
-    )
+    verb = {
+        'marked': 'call_marked',
+        'updated': 'call_updated',
+        'held': 'call_held',
+        'plan': 'call_plan_saved',
+    }.get(kind, 'call_updated')
     safe = {}
     for key, value in list((detail or {}).items())[:8]:
         if 'phone' in str(key).lower():

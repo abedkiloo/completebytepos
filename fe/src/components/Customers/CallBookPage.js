@@ -121,6 +121,8 @@ export default function CallBookPage() {
   const [dayLogDate, setDayLogDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [dayLog, setDayLog] = useState(null);
   const [dayLogLoading, setDayLogLoading] = useState(false);
+  /** Keep a recorded customer in the queue while notes are being edited. */
+  const [pinnedId, setPinnedId] = useState(null);
   const debouncedSearch = useDebouncedValue(search, 350);
   const bootDay = useRef(true);
   const canEditPlan = isManagerOrAdminFromStorage();
@@ -130,7 +132,9 @@ export default function CallBookPage() {
     try {
       const { data } = await customersAPI.callBook({
         scope: 'week',
-        status: 'not_called',
+        // Always load recorded + pending so notes can be updated; the dial
+        // queue still filters to people who need a call on the client.
+        status: 'all',
         page,
         page_size: DEFAULT_PAGE_SIZE,
         weekday: day,
@@ -199,7 +203,13 @@ export default function CallBookPage() {
     () => results.filter((row) => row.call_later_due || !row.called_this_week),
     [results],
   );
-  const queue = searching ? results : remaining;
+  const queue = useMemo(() => {
+    if (searching || view === 'week') return results;
+    if (!pinnedId) return remaining;
+    if (remaining.some((row) => row.customer_id === pinnedId)) return remaining;
+    const pinned = results.find((row) => row.customer_id === pinnedId);
+    return pinned ? [pinned, ...remaining] : remaining;
+  }, [searching, view, results, remaining, pinnedId]);
   const listed = Number.isFinite(Number(book?.count)) ? Number(book.count) : queue.length;
   const pageCount = Math.max(1, Math.ceil(listed / DEFAULT_PAGE_SIZE));
   const currentIndex = Math.min(index, Math.max(queue.length - 1, 0));
@@ -210,6 +220,12 @@ export default function CallBookPage() {
     const next = queue.findIndex((row) => !takenBySomeoneElse(row));
     if (next >= 0 && next !== currentIndex) setIndex(next);
   }, [view, queue, current, currentIndex]);
+
+  useEffect(() => {
+    if (view !== 'queue' || !pinnedId) return;
+    const at = queue.findIndex((row) => row.customer_id === pinnedId);
+    if (at >= 0 && at !== index) setIndex(at);
+  }, [view, pinnedId, queue, index]);
 
   useEffect(() => {
     if (view !== 'queue' || !markingOpen || !current || takenBySomeoneElse(current)) return undefined;
@@ -287,10 +303,10 @@ export default function CallBookPage() {
           onOpen={(weekday) => { setDay(weekday); setPage(1); setIndex(0); setView('queue'); }}
           onView={setInfoRow}
           onSelect={(customerId) => {
-            const row = queue.find((item) => item.customer_id === customerId);
+            const row = results.find((item) => item.customer_id === customerId)
+              || queue.find((item) => item.customer_id === customerId);
             if (takenBySomeoneElse(row)) return;
-            const at = queue.findIndex((item) => item.customer_id === customerId);
-            setIndex(at >= 0 ? at : 0);
+            setPinnedId(customerId);
             setView('queue');
           }}
         />
@@ -309,7 +325,10 @@ export default function CallBookPage() {
             12,
           )}
           onPrevious={() => setIndex((value) => Math.max(0, value - 1))}
-          onSaved={() => load()}
+          onSaved={() => {
+            setPinnedId(null);
+            load();
+          }}
           onView={setInfoRow}
         />
       )}
@@ -548,10 +567,16 @@ function WeekPlan({ summary, day, rows, page, pageCount, total, onDay, onPage, o
               size="sm"
               variant="outline"
               disabled={taken}
-              aria-label={taken ? dayClaimBlockedLine(row.hold) : `Open to record the call for ${row.name}`}
+              aria-label={
+                taken
+                  ? dayClaimBlockedLine(row.hold)
+                  : row.called_this_week
+                    ? `Update call notes for ${row.name}`
+                    : `Open to record the call for ${row.name}`
+              }
               onClick={() => onSelect(row.customer_id)}
             >
-              {taken ? 'Blocked' : 'Call'}
+              {taken ? 'Blocked' : row.called_this_week ? 'Update' : 'Call'}
             </Button>
             <Badge variant={row.called_this_week ? outcomeTone(row.outcome) : 'destructive'}>
               {row.called_this_week ? outcomeLabel(row.outcome) : 'Pending'}
@@ -660,12 +685,34 @@ function Workspace({ summary, current, position, total, markingOpen, dayLabel, d
  * @param {Function} props.onView Opens this customer's general information.
  */
 function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSaved, onView }) {
-  const [outcome, setOutcome] = useState('called');
-  const [summary, setSummary] = useState(row.previous_summary || '');
-  const [followUp, setFollowUp] = useState('');
-  const [followUpTime, setFollowUpTime] = useState('');
+  const alreadyRecorded = Boolean(row.called_this_week);
+  const [outcome, setOutcome] = useState(row.outcome || 'called');
+  const [summary, setSummary] = useState(row.request_summary || row.previous_summary || '');
+  const [followUp, setFollowUp] = useState(row.follow_up_on || '');
+  const [followUpTime, setFollowUpTime] = useState(() => {
+    if (!row.follow_up_at) return '';
+    const match = String(row.follow_up_at).match(/T(\d{2}:\d{2})/);
+    return match ? match[1] : '';
+  });
   const [saving, setSaving] = useState(false);
   const place = [row.ward, row.sub_county, row.county].filter(Boolean).join(', ');
+
+  useEffect(() => {
+    setOutcome(row.outcome || 'called');
+    setSummary(row.request_summary || row.previous_summary || '');
+    setFollowUp(row.follow_up_on || '');
+    const match = row.follow_up_at
+      ? String(row.follow_up_at).match(/T(\d{2}:\d{2})/)
+      : null;
+    setFollowUpTime(match ? match[1] : '');
+  }, [
+    row.customer_id,
+    row.outcome,
+    row.request_summary,
+    row.previous_summary,
+    row.follow_up_on,
+    row.follow_up_at,
+  ]);
 
   const copyNumber = async () => {
     try {
@@ -689,16 +736,16 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
     }
     setSaving(true);
     try {
-      await customersAPI.markCall(row.customer_id, {
+      const { data } = await customersAPI.markCall(row.customer_id, {
         outcome,
         request_summary: summary,
         follow_up_on: followUp,
         follow_up_time: outcome === 'ask_later' ? followUpTime : '',
       });
-      toast.success('Call recorded.');
+      toast.success(data?.updated ? 'Call notes updated.' : 'Call recorded.');
       onSaved();
     } catch (error) {
-      toast.error(error?.response?.data?.error || 'Could not record this call.');
+      toast.error(error?.response?.data?.error || 'Could not save this call.');
     } finally {
       setSaving(false);
     }
@@ -758,7 +805,12 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
       {row.caller_changed && (
         <p className="mt-1 text-sm text-warning">{callerChangedLine(row)}</p>
       )}
-      {row.previous_summary && !row.called_this_week && (
+      {row.request_summary && alreadyRecorded && (
+        <p className="mt-3 text-sm" data-testid="call-current-note">
+          This week&apos;s note: {row.request_summary}
+        </p>
+      )}
+      {row.previous_summary && !alreadyRecorded && (
         <p className="mt-3 text-sm">Last note: {row.previous_summary}</p>
       )}
       {takenBySomeoneElse(row) && (
@@ -779,7 +831,9 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
       )}
       {markingOpen && !takenBySomeoneElse(row) && (
         <>
-          <p className="mb-2 mt-4 text-sm font-medium">Record call outcome</p>
+          <p className="mb-2 mt-4 text-sm font-medium">
+            {alreadyRecorded ? 'Update call notes' : 'Record call outcome'}
+          </p>
           <div className="grid gap-2 sm:grid-cols-2">
             {CALL_OUTCOMES.map((item) => {
               const Icon = OUTCOME_ICON[item.value];
@@ -840,8 +894,14 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
             {canGoBack && (
               <Button type="button" variant="outline" onClick={onPrevious}>Previous</Button>
             )}
-            <Button type="button" className="flex-1" onClick={save} disabled={saving}>
-              {saving ? 'Saving…' : 'Save record'}
+            <Button
+              type="button"
+              className="flex-1"
+              onClick={save}
+              disabled={saving}
+              data-testid="call-save-record"
+            >
+              {saving ? 'Saving…' : alreadyRecorded ? 'Update notes' : 'Save record'}
             </Button>
           </div>
         </>

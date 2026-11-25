@@ -157,7 +157,11 @@ class CallBookMarkView(APIView):
 
     def post(self, request, customer_id: int):
         """
-        Record an outcome and an optional request summary.
+        Record or update an outcome and call notes.
+
+        When this user already marked the customer this week, the existing
+        row is updated (same endpoint) so notes can be corrected on web and
+        mobile without a second call history row.
 
         Args:
             request: JSON ``outcome``, ``request_summary`` (0–500 chars), and
@@ -166,11 +170,13 @@ class CallBookMarkView(APIView):
             customer_id: Customer primary key, positive integer.
 
         Returns:
-            Response: 200 on success. 400 on the weekend, a bad outcome, a
+            Response: 200 on success with ``updated`` true when an existing
+            week row was edited. 400 on the weekend, a bad outcome, a
             summary over 500 characters, a bad follow-up date, a missing or
             invalid call-later time, or no usable phone. 404 when the
             customer is missing. 409 when another staff member holds the
-            customer. Bodies do not include the phone number.
+            customer or already called them today. Bodies do not include the
+            phone number.
 
         Raises:
             None.
@@ -192,11 +198,12 @@ class CallBookMarkView(APIView):
             log_call_write(
                 request,
                 customer,
-                kind='marked',
+                kind='updated' if payload.get('updated') else 'marked',
                 detail={
                     'outcome': payload.get('outcome') or '',
                     'request_summary': payload.get('request_summary') or '',
                     'follow_up_on': payload.get('follow_up_on') or '',
+                    'updated': bool(payload.get('updated')),
                 },
             )
         http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)

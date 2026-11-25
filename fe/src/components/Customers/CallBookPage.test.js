@@ -178,6 +178,36 @@ describe('CallBookPage', () => {
     });
   });
 
+  test('corrected: updates notes for a customer already recorded this week', async () => {
+    const { toast } = require('../../utils/toast');
+    customersAPI.markCall.mockResolvedValue({
+      data: { called_this_week: true, updated: true, request_summary: 'Updated webbing note' },
+    });
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    await userEvent.click(screen.getByRole('tab', { name: 'Weekly schedule' }));
+    expect(await screen.findByText('Called Shop')).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Update call notes for Called Shop' }),
+    );
+    expect(await screen.findByTestId('call-current-note')).toHaveTextContent('Wants webbing');
+    expect(screen.getByRole('button', { name: 'Update notes' })).toBeInTheDocument();
+    const notes = screen.getByLabelText('Notes for Called Shop');
+    expect(notes).toHaveValue('Wants webbing');
+    await userEvent.clear(notes);
+    await userEvent.type(notes, 'Updated webbing note');
+    await userEvent.click(screen.getByRole('button', { name: 'Update notes' }));
+    await waitFor(() => {
+      expect(customersAPI.markCall).toHaveBeenCalledWith(2, {
+        outcome: 'called',
+        request_summary: 'Updated webbing note',
+        follow_up_on: '',
+        follow_up_time: '',
+      });
+    });
+    expect(toast.success).toHaveBeenCalledWith('Call notes updated.');
+  });
+
   test('asks for a time before saving call later', async () => {
     const { toast } = require('../../utils/toast');
     render(<CallBookPage />);
@@ -275,7 +305,7 @@ describe('CallBookPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Next page' }));
     expect(await screen.findByText('Page Two Shop')).toBeInTheDocument();
     expect(customersAPI.callBook).toHaveBeenLastCalledWith(expect.objectContaining({
-      status: 'not_called',
+      status: 'all',
       page: 2,
       page_size: 10,
     }));
