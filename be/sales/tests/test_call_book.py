@@ -787,6 +787,7 @@ class CallBookCoverageTests(SuperAdminAPITestCase):
         shown = build_call_book(today=MONDAY, scope='week', viewer_id=self.admin.id)
         row = next(item for item in shown['results'] if item['customer_id'] == shop.id)
         self.assertTrue(row['hold']['held_by_me'])
+        self.assertTrue(row['hold']['day_claim'])
 
         self.assertEqual(replace_plan(unlocated_weekday='nope', hold_minutes=5, rows=[])[0], 'bad_plan')
         self.assertEqual(replace_plan(unlocated_weekday=9, hold_minutes=5, rows=[])[0], 'bad_plan')
@@ -857,3 +858,208 @@ class CallBookSearchTests(SuperAdminAPITestCase):
         denied = anon.get('/api/sales/call-book/', {'search': 'Javala'})
         self.assertEqual(denied.status_code, 401)
         self.assertNotIn(self.javala.phone, str(denied.data))
+
+
+class CallBookDayClaimAndPriorityTests(SuperAdminAPITestCase):
+    """Same-day exclusive claims, last-week priority, and day caller log."""
+
+    def setUp(self):
+        super().setUp()
+        _enable_call_book(True)
+
+    def _other_client(self, username='call_day_other'):
+        """
+        Authenticated sales client for a second staff member.
+
+        Args:
+            username: Unique username, 1–40 characters.
+
+        Returns:
+            APIClient: JWT-authenticated client for that user.
+        """
+        other = User.objects.create_user(username=username, password='x')
+        UserProfile.objects.create(
+            user=other,
+            role='cashier',
+            custom_role=Role.objects.get(name='Sales Personnel'),
+            is_active=True,
+        )
+        client = APIClient()
+        from rest_framework_simplejwt.tokens import RefreshToken
+        token = RefreshToken.for_user(other)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        client.user = other
+        return client
+
+    def test_unit_day_claim_expires_at_end_of_nairobi_day(self):
+        from sales.call_book import end_of_nairobi_day, hold_customer
+        shop = _customer('Day Claim Shop', '0718000901')
+        code, payload = hold_customer(customer_id=shop.id, user=self.admin, today=MONDAY)
+        self.assertEqual(code, 'ok')
+        self.assertTrue(payload['day_claim'])
+        self.assertEqual(payload['expires_at'], end_of_nairobi_day(MONDAY).isoformat())
+
+    def test_unit_missed_last_week_sorts_before_called_last_week(self):
+        missed = _customer('Missed Priority', '0718000902')
+        covered = _customer('Covered Last Week', '0718000903')
+        other = User.objects.create_user(username='prior_caller', password='x')
+        CustomerCall.objects.create(
+            customer=covered,
+            called_by=other,
+            week_start=MONDAY - timedelta(days=7),
+            outcome=CustomerCall.OUTCOME_CALLED,
+            request_summary='Last week ok',
+        )
+        book = build_call_book(today=MONDAY, scope='week', status='not_called', page_size=50)
+        ids = [row['customer_id'] for row in book['results']]
+        self.assertLess(ids.index(missed.id), ids.index(covered.id))
+        missed_row = next(row for row in book['results'] if row['customer_id'] == missed.id)
+        covered_row = next(row for row in book['results'] if row['customer_id'] == covered.id)
+        self.assertTrue(missed_row['missed_last_week'])
+        self.assertFalse(covered_row['missed_last_week'])
+        self.assertEqual(covered_row['callers_last_week'][0]['called_by_id'], other.id)
+
+    def test_integration_second_person_cannot_mark_after_first_called_today(self):
+        shop = _customer('Once A Day', '0718000904')
+        other_client = self._other_client('call_once_day')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            first = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'request_summary': 'First'},
+                format='json',
+            )
+            second = other_client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'called', 'request_summary': 'Second'},
+                format='json',
+            )
+            hold = other_client.post(f'/api/sales/call-book/{shop.id}/hold/')
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(hold.status_code, status.HTTP_409_CONFLICT)
+        self.assertNotIn(shop.phone, second.content.decode())
+        self.assertNotIn(shop.phone, hold.content.decode())
+        self.assertEqual(CustomerCall.objects.filter(customer=shop).count(), 1)
+
+    def test_module_day_log_lists_who_called_without_phones(self):
+        shop = _customer('Logged Shop', '0718000905')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            marked = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {'outcome': 'no_answer', 'request_summary': 'Tried once'},
+                format='json',
+            )
+            log = self.client.get('/api/sales/call-book/day-log/', {'date': MONDAY.isoformat()})
+        self.assertEqual(marked.status_code, status.HTTP_200_OK)
+        self.assertEqual(log.status_code, status.HTTP_200_OK)
+        body = log.json()
+        self.assertEqual(body['day'], MONDAY.isoformat())
+        self.assertEqual(body['count'], 1)
+        self.assertEqual(body['results'][0]['name'], 'Logged Shop')
+        self.assertEqual(body['results'][0]['outcome'], 'no_answer')
+        self.assertTrue(body['callers'])
+        self.assertNotIn('phone', body['results'][0])
+        self.assertNotIn(shop.phone, log.content.decode())
+
+    def test_stress_many_same_day_claims_stay_exclusive(self):
+        from sales.call_book import hold_customer, mark_called
+        shop = _customer('Stress Claim', '0718000906')
+        users = []
+        for index in range(25):
+            user = User.objects.create_user(username=f'stress_claim_{index}', password='x')
+            users.append(user)
+        winners = 0
+        for user in users:
+            code, _ = hold_customer(customer_id=shop.id, user=user, today=MONDAY)
+            if code == 'ok':
+                winners += 1
+            else:
+                self.assertEqual(code, 'held')
+        self.assertEqual(winners, 1)
+        owner = users[0]
+        hold_customer(customer_id=shop.id, user=owner, today=MONDAY)
+        ok, _ = mark_called(
+            customer_id=shop.id,
+            user=owner,
+            outcome='called',
+            request_summary='done',
+            today=MONDAY,
+        )
+        self.assertEqual(ok, 'ok')
+        for user in users[1:]:
+            code, payload = mark_called(
+                customer_id=shop.id,
+                user=user,
+                outcome='called',
+                request_summary='nope',
+                today=MONDAY,
+            )
+            self.assertEqual(code, 'called_today')
+            self.assertNotIn('0718000906', str(payload))
+
+    def test_corrected_caller_changed_when_different_people_call_weeks(self):
+        shop = _customer('Rotate Callers', '0718000907')
+        alice = User.objects.create_user(
+            username='alice_caller', password='x', first_name='Alice', last_name='A',
+        )
+        bob = User.objects.create_user(
+            username='bob_caller', password='x', first_name='Bob', last_name='B',
+        )
+        CustomerCall.objects.create(
+            customer=shop,
+            called_by=alice,
+            week_start=MONDAY - timedelta(days=7),
+            outcome=CustomerCall.OUTCOME_CALLED,
+            request_summary='Alice last week',
+        )
+        CustomerCall.objects.create(
+            customer=shop,
+            called_by=bob,
+            week_start=MONDAY,
+            outcome=CustomerCall.OUTCOME_CALLED,
+            request_summary='Bob this week',
+        )
+        call = CustomerCall.objects.filter(customer=shop, week_start=MONDAY).first()
+        CustomerCall.objects.filter(pk=call.pk).update(
+            called_at=timezone.make_aware(datetime(2026, 11, 16, 10, 0)),
+        )
+        book = build_call_book(today=MONDAY, scope='week', status='all', page_size=50)
+        row = next(item for item in book['results'] if item['customer_id'] == shop.id)
+        self.assertTrue(row['caller_changed'])
+        self.assertIn('Alice', row['callers_last_week'][0]['called_by'])
+        self.assertIn('Bob', row['callers_this_week'][0]['called_by'])
+        from sales.call_book import build_day_call_log
+        day_log = build_day_call_log(day=MONDAY, page_size=50)
+        names = [item['name'] for item in day_log['results']]
+        self.assertIn('Rotate Callers', names)
+
+    def test_security_day_log_denies_anonymous_and_field_sales(self):
+        shop = _customer('Private Day Log', '0718000908')
+        CustomerCall.objects.create(
+            customer=shop,
+            called_by=self.admin,
+            week_start=MONDAY,
+            outcome=CustomerCall.OUTCOME_CALLED,
+            request_summary='Secret',
+        )
+        anon = APIClient()
+        denied = anon.get('/api/sales/call-book/day-log/', {'date': MONDAY.isoformat()})
+        self.assertEqual(denied.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn(shop.phone, denied.content.decode())
+        ensure_permissions()
+        sync_default_roles()
+        agent = User.objects.create_user(username='day_log_field', password='x')
+        UserProfile.objects.create(
+            user=agent,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_FIELD_AGENT),
+            is_active=True,
+        )
+        client = APIClient()
+        from rest_framework_simplejwt.tokens import RefreshToken
+        token = RefreshToken.for_user(agent)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        blocked = client.get('/api/sales/call-book/day-log/', {'date': MONDAY.isoformat()})
+        self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertNotIn(shop.phone, blocked.content.decode())
+        self.assertNotIn('Secret', blocked.content.decode())

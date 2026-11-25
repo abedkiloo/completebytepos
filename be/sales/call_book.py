@@ -4,18 +4,21 @@ Weekly customer call book.
 Monday–Friday in Africa/Nairobi. Saturday and Sunday are not call days.
 "Called this week" is derived from ``CustomerCall.week_start`` (that week's
 Monday), so the list resets itself on Monday. Staff copy the number and
-call on their own cell phone. The system only records the result. A short
-hold stops two staff members working the same shop. Customers with no
+call on their own cell phone. The system only records the result. Clicking
+or copying a number claims that shop for the rest of the Nairobi day so
+two people cannot dial the same customer on the same day. Customers not
+called last week float above other pending shops. Customers with no
 usable phone are counted as cannot-call and are left off the list.
 
-Bounds: summaries are 0–500 characters. Hold is 1–30 minutes. A day plan
-has at most 200 location rows. Weekday indexes are 0 (Monday) through 4
-(Friday).
+Bounds: summaries are 0–500 characters. A day claim lasts until 23:59:59
+Nairobi. A day plan has at most 200 location rows. Weekday indexes are 0
+(Monday) through 4 (Friday). Day logs return at most 1000 rows per page.
 """
 
 from __future__ import annotations
 
 import zlib
+from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 
 from django.db import transaction
@@ -55,6 +58,65 @@ def nairobi_today() -> date:
         date: Local today. No side effects.
     """
     return timezone.localdate()
+
+
+def nairobi_day_bounds(day: date) -> tuple[datetime, datetime]:
+    """
+    Inclusive start and exclusive end of a Nairobi calendar day.
+
+    Args:
+        day: Local calendar date.
+
+    Returns:
+        tuple: ``(start, end)`` as aware datetimes. ``start`` is 00:00:00
+        on ``day``. ``end`` is 00:00:00 on the next day. No writes.
+
+    Raises:
+        None.
+    """
+    tz = timezone.get_current_timezone()
+    start = timezone.make_aware(datetime.combine(day, time.min), tz)
+    end = timezone.make_aware(datetime.combine(day + timedelta(days=1), time.min), tz)
+    return start, end
+
+
+def end_of_nairobi_day(day: date) -> datetime:
+    """
+    When a same-day call claim expires.
+
+    Args:
+        day: Local calendar date of the claim.
+
+    Returns:
+        datetime: Aware 23:59:59 on ``day`` in Africa/Nairobi. No writes.
+
+    Raises:
+        None.
+    """
+    tz = timezone.get_current_timezone()
+    return timezone.make_aware(datetime.combine(day, time(23, 59, 59)), tz)
+
+
+def operation_now(day: date) -> datetime:
+    """
+    Clock used for claims, due checks, and recording ``called_at``.
+
+    Args:
+        day: Nairobi calendar day for this operation.
+
+    Returns:
+        datetime: ``timezone.now()`` when that matches ``day``. Otherwise
+        noon on ``day``, so tests that freeze the calendar still keep
+        same-day claims active. No writes.
+
+    Raises:
+        None.
+    """
+    now = timezone.now()
+    if timezone.localdate(now) == day:
+        return now
+    tz = timezone.get_current_timezone()
+    return timezone.make_aware(datetime.combine(day, time(12, 0)), tz)
 
 
 def week_monday(day: date) -> date:
@@ -372,9 +434,11 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
     Returns:
         dict: ``summary`` counts plus ``results`` for this page. Customers
         whose call-later time has been reached come first, earliest time
-        first. Then customers not yet called, dormant before at-risk. Each
-        row includes phone, place, this week's mark, the callback time, and
-        whether that time has been reached. No side effects.
+        first. Then not-called shops that were missed last week, then other
+        not-called shops, dormant before at-risk. Each row includes phone,
+        place, this week's mark, every caller this week and last week, a
+        ``caller_changed`` flag, ``missed_last_week``, the callback time,
+        and whether that time has been reached. No side effects.
 
     Raises:
         None. Unknown scope/status fall back to today/all.
@@ -382,6 +446,7 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
     day = today or nairobi_today()
     monday = week_monday(day)
     friday = monday + timedelta(days=4)
+    last_monday = monday - timedelta(days=7)
     call_day = is_call_day(day)
     if scope not in ('today', 'week'):
         scope = 'today'
@@ -409,8 +474,20 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         .order_by('called_at')
     )
     this_week = {}
+    week_call_lists: dict[int, list] = defaultdict(list)
     for call in week_calls:
         this_week[call.customer_id] = call
+        week_call_lists[call.customer_id].append(call)
+    last_week_calls = (
+        CustomerCall.objects.filter(week_start=last_monday)
+        .select_related('called_by')
+        .order_by('called_at')
+    )
+    last_week_ids: set[int] = set()
+    last_week_lists: dict[int, list] = defaultdict(list)
+    for call in last_week_calls:
+        last_week_ids.add(call.customer_id)
+        last_week_lists[call.customer_id].append(call)
     latest_prior = (
         CustomerCall.objects.filter(week_start__lt=monday)
         .values('customer_id')
@@ -422,7 +499,7 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             id__in=[row['latest_id'] for row in latest_prior],
         )
     }
-    now = timezone.now()
+    now = operation_now(day)
     holds = {
         hold.customer_id: hold
         for hold in CallHold.objects.filter(expires_at__gt=now).select_related('held_by')
@@ -449,6 +526,9 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             due_at,
             now,
         )
+        callers_this_week = _caller_entries(week_call_lists.get(customer.id, []))
+        callers_last_week = _caller_entries(last_week_lists.get(customer.id, []))
+        missed_last_week = customer.id not in last_week_ids
         rows.append({
             '_match': _customer_matches_search(customer, search),
             'customer_id': customer.id,
@@ -465,6 +545,10 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             'request_summary': call.request_summary if call else '',
             'called_at': call.called_at.isoformat() if call else None,
             'called_by': _display_name(call.called_by) if call else '',
+            'callers_this_week': callers_this_week,
+            'callers_last_week': callers_last_week,
+            'caller_changed': _callers_changed(callers_this_week, callers_last_week),
+            'missed_last_week': missed_last_week,
             'previous_summary': prior.request_summary if prior else '',
             'previous_outcome': prior.outcome if prior else '',
             'follow_up_on': call.follow_up_on.isoformat() if call and call.follow_up_on else '',
@@ -480,8 +564,19 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         due_rank = 0 if row['call_later_due'] else 1
         due_when = row['follow_up_at'] if row['call_later_due'] else ''
         called_rank = 0 if (not row['called_this_week'] or row['call_later_due']) else 1
+        missed_rank = 0 if (
+            (not row['called_this_week'] or row['call_later_due']) and row['missed_last_week']
+        ) else 1
         segment = SEGMENT_RANK.get(row['buyer_segment'], 9)
-        return (due_rank, due_when, called_rank, segment, (row['name'] or '').lower(), row['customer_id'])
+        return (
+            due_rank,
+            due_when,
+            called_rank,
+            missed_rank,
+            segment,
+            (row['name'] or '').lower(),
+            row['customer_id'],
+        )
 
     rows.sort(key=sort_key)
     callable_count = len(rows)
@@ -522,6 +617,10 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
             'cannot_call': cannot_call,
             'today_callable': len(today_rows),
             'today_not_called': sum(1 for row in today_rows if not row['called_this_week']),
+            'missed_last_week': sum(
+                1 for row in rows
+                if row['missed_last_week'] and not row['called_this_week']
+            ),
             'follow_ups': sum(1 for row in rows if row['outcome'] == CustomerCall.OUTCOME_ASK_LATER),
             'days': _day_counts(rows),
         },
@@ -529,6 +628,116 @@ def build_call_book(*, today: date | None = None, scope: str = 'today', status: 
         'page': page,
         'page_size': page_size,
         'results': page_rows,
+    }
+
+
+def _caller_entries(calls: list) -> list[dict]:
+    """
+    Compact caller list for one customer in one week.
+
+    Args:
+        calls: Ordered ``CustomerCall`` rows with ``called_by`` loaded.
+            At most a few dozen per customer per week are expected.
+
+    Returns:
+        list[dict]: Each entry has ``called_by`` (1–150 chars), optional
+        ``called_by_id``, ``outcome``, and ``called_at`` ISO time. Empty
+        when there are no calls. No phone numbers. No writes.
+
+    Raises:
+        None.
+    """
+    entries = []
+    for call in calls:
+        entries.append({
+            'called_by': _display_name(call.called_by),
+            'called_by_id': call.called_by_id,
+            'outcome': call.outcome or '',
+            'called_at': call.called_at.isoformat() if call.called_at else '',
+        })
+    return entries
+
+
+def _callers_changed(this_week: list[dict], last_week: list[dict]) -> bool:
+    """
+    Whether a different set of people called this week vs last week.
+
+    Args:
+        this_week: Caller entries from ``_caller_entries`` for this week.
+        last_week: Caller entries from ``_caller_entries`` for last week.
+
+    Returns:
+        bool: True when both weeks have at least one named caller and the
+        sets of ``called_by_id`` differ. False when either week is empty
+        or the same people called.
+
+    Raises:
+        None.
+    """
+    ids_this = {entry.get('called_by_id') for entry in this_week if entry.get('called_by_id')}
+    ids_last = {entry.get('called_by_id') for entry in last_week if entry.get('called_by_id')}
+    if not ids_this or not ids_last:
+        return False
+    return ids_this != ids_last
+
+
+def build_day_call_log(*, day: date | None = None, page: int = 1, page_size: int = PAGE_SIZE_DEFAULT) -> dict:
+    """
+    Who called which customers on one Nairobi calendar day.
+
+    Args:
+        day: Local date. Defaults to ``nairobi_today``. May be any past or
+            present date; future dates return an empty page.
+        page: 1-based page. Values below 1 become 1.
+        page_size: 1–1000. Out of range is clamped.
+
+    Returns:
+        dict: ``day``, ``count``, ``page``, ``page_size``, ``callers``
+        (unique staff names, 0–200), and ``results``. Each result has
+        customer id and name, caller name, outcome, summary (0–500), and
+        ``called_at``. Phone numbers are omitted. No writes.
+
+    Raises:
+        None.
+    """
+    target = day or nairobi_today()
+    page = max(1, int(page or 1))
+    page_size = min(PAGE_SIZE_MAX, max(1, int(page_size or PAGE_SIZE_DEFAULT)))
+    start, end = nairobi_day_bounds(target)
+    calls = list(
+        CustomerCall.objects.filter(called_at__gte=start, called_at__lt=end)
+        .select_related('customer', 'called_by')
+        .order_by('called_at', 'id')
+    )
+    caller_names = []
+    seen_names = set()
+    for call in calls:
+        name = _display_name(call.called_by)
+        key = name.lower()
+        if key not in seen_names:
+            seen_names.add(key)
+            caller_names.append(name)
+    total = len(calls)
+    start_index = (page - 1) * page_size
+    page_calls = calls[start_index:start_index + page_size]
+    results = [
+        {
+            'customer_id': call.customer_id,
+            'name': (call.customer.name if call.customer_id else '')[:200],
+            'called_by': _display_name(call.called_by),
+            'outcome': call.outcome or '',
+            'request_summary': (call.request_summary or '')[:SUMMARY_MAX],
+            'called_at': call.called_at.isoformat() if call.called_at else '',
+        }
+        for call in page_calls
+    ]
+    return {
+        'day': target.isoformat(),
+        'count': total,
+        'page': page,
+        'page_size': page_size,
+        'callers': caller_names[:200],
+        'results': results,
     }
 
 
@@ -754,19 +963,21 @@ def _profile_fields(customer) -> dict:
 
 def _hold_payload(hold, viewer_id: int | None) -> dict:
     """
-    Describe an active hold without the customer's phone.
+    Describe an active same-day claim without the customer's phone.
 
     Args:
         hold: ``CallHold`` with ``held_by`` loaded.
         viewer_id: Current user id, or None.
 
     Returns:
-        dict: Holder name, whether it is the viewer, and expiry ISO time.
+        dict: Holder name, whether it is the viewer, expiry ISO time, and
+        ``day_claim`` True so the UI can say the lock lasts for the day.
     """
     return {
         'held_by': _display_name(hold.held_by),
         'held_by_me': viewer_id is not None and hold.held_by_id == viewer_id,
         'expires_at': hold.expires_at.isoformat(),
+        'day_claim': True,
     }
 
 
@@ -789,9 +1000,9 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
     Returns:
         tuple: ``(code, payload)``. Codes are ``ok``, ``weekend``,
         ``not_found``, ``no_phone``, ``bad_outcome``, ``too_long``,
-        ``held``, ``bad_date``, or ``bad_time``. Payloads never include the
-        phone number. Side effect on ``ok``: inserts one ``CustomerCall``
-        and deletes any hold on that customer.
+        ``held``, ``called_today``, ``bad_date``, or ``bad_time``.
+        Payloads never include the phone number. Side effect on ``ok``:
+        inserts one ``CustomerCall`` and deletes any hold on that customer.
 
     Raises:
         None. Failures are returned as codes.
@@ -827,15 +1038,40 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
             return 'not_found', {'error': 'Customer not found.'}
         if not usable_phone(customer.phone):
             return 'no_phone', {'error': 'This customer has no number to call.'}
-        now = timezone.now()
+        now = operation_now(day)
         hold = CallHold.objects.select_for_update().filter(customer=customer).first()
         if hold is not None and hold.expires_at > now and hold.held_by_id != user.id:
             return 'held', {
-                'error': 'Another staff member is calling this customer. Try again in a few minutes.',
+                'error': (
+                    f'{_display_name(hold.held_by)} already claimed this customer today. '
+                    'Only one person can call them on this day.'
+                ),
+                'held_by': _display_name(hold.held_by),
+            }
+        day_start, day_end = nairobi_day_bounds(day)
+        prior_today = (
+            CustomerCall.objects.select_for_update()
+            .filter(
+                customer=customer,
+                called_at__gte=day_start,
+                called_at__lt=day_end,
+            )
+            .select_related('called_by')
+            .order_by('called_at')
+            .first()
+        )
+        if prior_today is not None and prior_today.called_by_id != user.id:
+            return 'called_today', {
+                'error': (
+                    f'{_display_name(prior_today.called_by)} already called this customer today. '
+                    'Only one person can call them on this day.'
+                ),
+                'called_by': _display_name(prior_today.called_by),
             }
         CustomerCall.objects.create(
             customer=customer,
             called_by=user,
+            called_at=now,
             week_start=week_monday(day),
             outcome=outcome,
             request_summary=summary,
@@ -855,24 +1091,24 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
 
 def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple[str, dict]:
     """
-    Reserve a customer for this user for the configured hold.
+    Claim a customer for this user for the rest of the Nairobi day.
 
     Args:
         customer_id: Active customer primary key.
         user: Authenticated staff member.
-        today: Nairobi date override. Holds are refused on the weekend.
+        today: Nairobi date override. Claims are refused on the weekend.
 
     Returns:
         tuple: ``(code, payload)`` with the same codes as ``mark_called``
-        plus ``ok`` carrying ``expires_at``. No phone number in the payload.
-        Side effect on ``ok``: this user holds this customer and their
-        earlier holds are released. One person blocks one customer.
+        plus ``ok`` carrying ``expires_at`` and ``day_claim``. Also
+        ``called_today`` when someone else already recorded a call today.
+        No phone number in the payload. Side effect on ``ok``: this user
+        claims this customer until end of day and their earlier claims are
+        released. One person blocks one customer for that day.
     """
     day = today or nairobi_today()
     if not is_call_day(day):
         return 'weekend', {'error': 'Calls are marked Monday to Friday.'}
-    settings_row = CallBookSettings.load()
-    minutes = min(30, max(1, int(settings_row.hold_minutes)))
     with transaction.atomic():
         customer = (
             Customer.objects.select_for_update()
@@ -883,21 +1119,49 @@ def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple
             return 'not_found', {'error': 'Customer not found.'}
         if not usable_phone(customer.phone):
             return 'no_phone', {'error': 'This customer has no number to call.'}
-        now = timezone.now()
+        now = operation_now(day)
+        day_start, day_end = nairobi_day_bounds(day)
+        prior_today = (
+            CustomerCall.objects.select_for_update()
+            .filter(
+                customer=customer,
+                called_at__gte=day_start,
+                called_at__lt=day_end,
+            )
+            .select_related('called_by')
+            .order_by('called_at')
+            .first()
+        )
+        if prior_today is not None and prior_today.called_by_id != user.id:
+            return 'called_today', {
+                'error': (
+                    f'{_display_name(prior_today.called_by)} already called this customer today. '
+                    'Only one person can call them on this day.'
+                ),
+                'called_by': _display_name(prior_today.called_by),
+            }
         hold = CallHold.objects.select_for_update().filter(customer=customer).first()
         if hold is not None and hold.expires_at > now and hold.held_by_id != user.id:
             return 'held', {
-                'error': 'Another staff member is calling this customer. Try again in a few minutes.',
+                'error': (
+                    f'{_display_name(hold.held_by)} already claimed this customer today. '
+                    'Only one person can call them on this day.'
+                ),
+                'held_by': _display_name(hold.held_by),
             }
         CallHold.objects.filter(held_by=user).exclude(customer=customer).delete()
-        expires = now + timedelta(minutes=minutes)
+        expires = end_of_nairobi_day(day)
         if hold is None:
             CallHold.objects.create(customer=customer, held_by=user, expires_at=expires)
         else:
             hold.held_by = user
             hold.expires_at = expires
             hold.save(update_fields=['held_by', 'expires_at'])
-    return 'ok', {'expires_at': expires.isoformat(), 'hold_minutes': minutes}
+    return 'ok', {
+        'expires_at': expires.isoformat(),
+        'day_claim': True,
+        'hold_minutes': max(1, int((expires - now).total_seconds() // 60) or 1),
+    }
 
 
 def plan_payload() -> dict:

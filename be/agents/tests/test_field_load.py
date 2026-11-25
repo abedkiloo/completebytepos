@@ -195,7 +195,18 @@ class FieldLoadFlowTests(SuperAdminAPITestCase):
         self.cups.refresh_from_db()
         self.assertEqual(self.cups.stock_quantity, 60)
         self.assertEqual(sold.data['lines'][0]['quantity_sold'], 15)
-        self.assertEqual(sold.data['money']['collected'], '750.00')
+        self.assertEqual(sold.data['money']['collected'], '0.00')
+        self.assertEqual(sold.data['money']['expected'], '750.00')
+        from sales.models import Sale
+        pending = Sale.objects.get(field_load_sale__load_id=load_id)
+        self.assertEqual(pending.status, 'pending_approval')
+        self.assertEqual(sold.data['sales'][0]['status'], 'pending_approval')
+        approved = self.client.post(f'/api/sales/{pending.id}/complete/', {}, format='json')
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.content)
+        pending.refresh_from_db()
+        self.assertEqual(pending.status, 'completed')
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, 60)
 
         line_id = sold.data['lines'][0]['id']
         counted = agent_client.post(
@@ -253,11 +264,17 @@ class FieldLoadFlowTests(SuperAdminAPITestCase):
         by_name = {row['product_name']: row['quantity_sold'] for row in sold.data['lines']}
         self.assertEqual(by_name['Cups'], 2)
         self.assertEqual(by_name['Legs'], 1)
-        self.assertEqual(sold.data['money']['collected'], '100.00')
+        self.assertEqual(sold.data['money']['collected'], '0.00')
+        self.assertEqual(sold.data['money']['expected'], '150.00')
         sale = Sale.objects.get(field_load_sale__load_id=load_id)
+        self.assertEqual(sale.status, 'pending_approval')
         self.assertEqual(sale.items.count(), 2)
         self.assertEqual(sale.total, Decimal('150.00'))
         self.assertEqual(sale.amount_paid, Decimal('100.00'))
+        approved = self.client.post(f'/api/sales/{sale.id}/complete/', {}, format='json')
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.content)
+        sale.refresh_from_db()
+        self.assertEqual(sale.status, 'completed')
         self.cups.refresh_from_db()
         legs.refresh_from_db()
         self.assertEqual(self.cups.stock_quantity, 90)
@@ -300,6 +317,68 @@ class FieldLoadFlowTests(SuperAdminAPITestCase):
         self.cups.refresh_from_db()
         self.assertEqual(self.cups.stock_quantity, 90)
         self.assertEqual(Sale.objects.filter(field_load_sale__load_id=load_id).count(), 1)
+
+    def test_corrected_field_agent_sale_waits_for_manager_without_restock(self):
+        """Corrected: agent field-load sales wait for manager; shop stock does not move again."""
+        issued = self._issue(10)
+        self.assertEqual(issued.status_code, status.HTTP_201_CREATED, issued.content)
+        load_id = issued.data['id']
+        self.cups.refresh_from_db()
+        after_issue = self.cups.stock_quantity
+        token = RefreshToken.for_user(self.agent)
+        agent = APIClient()
+        agent.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        sold = agent.post(
+            f'/api/agents/field-loads/{load_id}/sell/',
+            {
+                'product_id': self.cups.id,
+                'quantity': 3,
+                'customer_id': self.customer.id,
+                'amount_paid': '150.00',
+                'payment_method': 'cash',
+            },
+            format='json',
+        )
+        self.assertEqual(sold.status_code, status.HTTP_200_OK, sold.content)
+        sale = Sale.objects.get(field_load_sale__load_id=load_id)
+        self.assertEqual(sale.status, 'pending_approval')
+        self.assertEqual(sold.data['lines'][0]['quantity_sold'], 3)
+        self.assertEqual(sold.data['money']['collected'], '0.00')
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, after_issue)
+        approved = self.client.post(f'/api/sales/{sale.id}/complete/', {}, format='json')
+        self.assertEqual(approved.status_code, status.HTTP_200_OK, approved.content)
+        sale.refresh_from_db()
+        self.assertEqual(sale.status, 'completed')
+        self.cups.refresh_from_db()
+        self.assertEqual(self.cups.stock_quantity, after_issue)
+        self.assertNotIn('0718', str(sold.data))
+
+    def test_security_field_agent_cannot_complete_own_field_load_sale(self):
+        """Security: field agent cannot self-approve the queued field-load sale."""
+        issued = self._issue(5)
+        load_id = issued.data['id']
+        token = RefreshToken.for_user(self.agent)
+        agent = APIClient()
+        agent.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        sold = agent.post(
+            f'/api/agents/field-loads/{load_id}/sell/',
+            {
+                'product_id': self.cups.id,
+                'quantity': 1,
+                'amount_paid': '50.00',
+                'payment_method': 'cash',
+            },
+            format='json',
+        )
+        self.assertEqual(sold.status_code, status.HTTP_200_OK, sold.content)
+        sale = Sale.objects.get(field_load_sale__load_id=load_id)
+        self.assertEqual(sale.status, 'pending_approval')
+        own = agent.post(f'/api/sales/{sale.id}/complete/', {}, format='json')
+        self.assertIn(own.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_400_BAD_REQUEST))
+        sale.refresh_from_db()
+        self.assertEqual(sale.status, 'pending_approval')
+        self.assertNotIn('0718', own.content.decode())
 
     def test_send_back_does_not_restock_and_blocks_a_second_load(self):
         issued = self._issue(10)
@@ -765,6 +844,16 @@ class FieldLoadCoverageTests(SuperAdminAPITestCase):
             _resolve_tender(payment_method='credit', paid=Decimal('0'), total=Decimal('1'), has_customer=True, tender='cash')[0],
             'on_account',
         )
+        self.assertEqual(
+            _resolve_tender(payment_method='debt', paid=Decimal('0'), total=Decimal('1'), has_customer=True, tender='cash')[0],
+            'on_account',
+        )
+        self.assertEqual(
+            _resolve_tender(payment_method='on_account', paid=Decimal('0'), total=Decimal('1'), has_customer=True, tender='cash')[0],
+            'on_account',
+        )
+        with self.assertRaises(FieldLoadError):
+            _resolve_tender(payment_method='debt', paid=Decimal('0'), total=Decimal('1'), has_customer=False, tender='cash')
         with self.assertRaises(FieldLoadError):
             _resolve_tender(payment_method='split', paid=Decimal('1'), total=Decimal('5'), has_customer=False, tender='cash')
         with self.assertRaises(FieldLoadError):

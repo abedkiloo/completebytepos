@@ -12,6 +12,8 @@ const STATUS_VARIANT = {
   holding: 'warning',
   pending_approval: 'warning',
   awaiting_payment: 'warning',
+  awaiting_issue: 'warning',
+  pending_review: 'warning',
   cancelled: 'destructive',
   voided: 'destructive',
   draft: 'secondary',

@@ -26,6 +26,8 @@ import {
   needsExtremePriceConfirm,
 } from '../../utils/makerChecker';
 import {
+  approvalWaitingBadgeVariant,
+  approvalWaitingRowClassName,
   describeApprovalSummary,
   expenseApprovalDetails,
   formatApprovalValue,
@@ -69,14 +71,14 @@ function ApprovalListRow({ title, subtitle, badge, amount, selected, onOpen }) {
       onClick={onOpen}
       className={cn(
         'flex w-full items-center gap-3 border-b border-border/60 px-3 py-2.5 text-left transition-colors',
-        'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        selected && 'bg-primary/5',
+        approvalWaitingRowClassName({ selected }),
       )}
       data-testid="approval-list-row"
+      data-action-needed="true"
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className="shrink-0 text-[10px]">
+          <Badge variant={approvalWaitingBadgeVariant()} className="shrink-0 text-[10px]">
             {badge}
           </Badge>
           <span className="truncate text-sm font-medium">{title}</span>
@@ -86,7 +88,7 @@ function ApprovalListRow({ title, subtitle, badge, amount, selected, onOpen }) {
       {amount != null ? (
         <span className="shrink-0 text-sm font-semibold tabular-nums">{formatCurrency(amount)}</span>
       ) : null}
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+      <ChevronRight className="h-4 w-4 shrink-0 text-warning" aria-hidden />
     </button>
   );
 }
@@ -579,8 +581,8 @@ export default function PendingApprovalsPage() {
       ) : (
         <Card className="overflow-hidden">
           <CardContent className="p-0">
-            <div className="border-b bg-muted/30 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {listItems.length} waiting
+            <div className="border-b border-warning/30 bg-warning/10 px-3 py-2 text-xs font-medium uppercase tracking-wide text-warning">
+              {listItems.length} waiting · needs your action
             </div>
             <div data-testid="approval-list">
               {listItems.map((item) => (

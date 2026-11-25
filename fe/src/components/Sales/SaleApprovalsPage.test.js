@@ -117,6 +117,9 @@ describe('SaleApprovalsPage', () => {
   test('lists sales as compact rows then approves from the popup', async () => {
     render(<SaleApprovalsPage />);
     expect(await screen.findByText('S-2300')).toBeInTheDocument();
+    const waitingRow = screen.getByTestId('sale-approval-list-row');
+    expect(waitingRow).toHaveAttribute('data-action-needed', 'true');
+    expect(waitingRow.className).toMatch(/warning/);
     expect(screen.queryByRole('button', { name: /Approve/i })).not.toBeInTheDocument();
     await openSaleRow();
     fireEvent.click(screen.getByRole('button', { name: /Approve/i }));
@@ -301,6 +304,9 @@ describe('SaleApprovalsPage', () => {
       },
     });
     render(<SaleApprovalsPage />);
+    const returnedRow = await screen.findByTestId('sale-approval-list-row');
+    expect(returnedRow).toHaveAttribute('data-action-needed', 'false');
+    expect(returnedRow.className).not.toMatch(/border-l-warning/);
     await openSaleRow();
     expect(screen.getByText(/Waiting on the salesperson/i)).toBeInTheDocument();
     expect(screen.getByText('Red Shuka')).toBeInTheDocument();

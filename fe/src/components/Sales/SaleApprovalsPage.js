@@ -51,6 +51,10 @@ import {
   userMayApproveSaleCancellation,
 } from '../../utils/pastDatedApproval';
 import { cn } from '../../lib/cn';
+import {
+  approvalWaitingBadgeVariant,
+  approvalWaitingRowClassName,
+} from '../../utils/approvalDisplay';
 
 const TAB_WAITING = 'waiting';
 const TAB_HISTORY = 'history';
@@ -58,21 +62,30 @@ const TAB_HISTORY = 'history';
 const KIND_SALE = 'sale';
 const KIND_COLLECTION = 'collection';
 
-function ApprovalListRow({ title, subtitle, badge, amount, meta, selected, onOpen }) {
+function ApprovalListRow({ title, subtitle, badge, amount, meta, selected, onOpen, tone = 'action' }) {
+  const needsAction = tone === 'action';
   return (
     <button
       type="button"
       onClick={onOpen}
       className={cn(
         'flex w-full items-center gap-3 border-b border-border/60 px-3 py-2.5 text-left transition-colors',
-        'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        selected && 'bg-primary/5',
+        needsAction
+          ? approvalWaitingRowClassName({ selected })
+          : cn(
+            'hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            selected && 'bg-primary/5',
+          ),
       )}
       data-testid="sale-approval-list-row"
+      data-action-needed={needsAction ? 'true' : 'false'}
     >
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className="shrink-0 text-[10px]">
+          <Badge
+            variant={needsAction ? approvalWaitingBadgeVariant() : 'secondary'}
+            className="shrink-0 text-[10px]"
+          >
             {badge}
           </Badge>
           {meta ? (
@@ -87,7 +100,10 @@ function ApprovalListRow({ title, subtitle, badge, amount, meta, selected, onOpe
       {amount != null ? (
         <span className="shrink-0 text-sm font-semibold tabular-nums">{formatCurrency(amount)}</span>
       ) : null}
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+      <ChevronRight
+        className={cn('h-4 w-4 shrink-0', needsAction ? 'text-warning' : 'text-muted-foreground')}
+        aria-hidden
+      />
     </button>
   );
 }
@@ -267,14 +283,14 @@ function SaleReviewActions({ sale, onResolved, onClose }) {
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={approve} disabled={busy}>
+            <Button size="sm" variant="success" onClick={approve} disabled={busy}>
               {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
               Approve
             </Button>
             <HelpHint actionKey="sale_complete" />
-            <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
+            <Button size="sm" variant="warning" onClick={() => setShowReject(true)} disabled={busy} data-testid="sale-approval-return">
               <X className="mr-1 h-4 w-4" />
-              Reject
+              Return
             </Button>
           </div>
         </div>
@@ -373,14 +389,14 @@ function CollectionReviewActions({ change, onResolved, onClose }) {
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={approve} disabled={busy}>
+          <Button size="sm" variant="success" onClick={approve} disabled={busy}>
             {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Check className="mr-1 h-4 w-4" />}
             Approve
           </Button>
           <HelpHint actionKey="debt_collection" />
-          <Button size="sm" variant="outline" onClick={() => setShowReject(true)} disabled={busy}>
+          <Button size="sm" variant="warning" onClick={() => setShowReject(true)} disabled={busy} data-testid="collection-approval-return">
             <X className="mr-1 h-4 w-4" />
-            Reject
+            Return
           </Button>
         </div>
       )}
@@ -583,6 +599,7 @@ export default function SaleApprovalsPage() {
                   meta="Returned"
                   amount={Number(sale.total) || 0}
                   selected={selected?.key === `sale-${sale.id}`}
+                  tone="returned"
                   onOpen={() => openSale(sale)}
                 />
               ))}

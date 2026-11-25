@@ -1,4 +1,15 @@
-import { displayStatus, loadBuckets, loadMatchesFilter, missingUnits, saleBasketTotal, saleTotal, statusLabel } from './fieldLoad';
+import {
+  displayStatus,
+  fieldLoadHasSales,
+  fieldLoadNoSalesLabel,
+  fieldLoadSaleCount,
+  loadBuckets,
+  loadMatchesFilter,
+  missingUnits,
+  saleBasketTotal,
+  saleTotal,
+  statusLabel,
+} from './fieldLoad';
 
 describe('field load math', () => {
   test('missing is taken minus sold minus returned, and blank means not counted', () => {
@@ -50,5 +61,44 @@ describe('field load math', () => {
     ));
     expect(mixed.filter((row) => loadMatchesFilter(row, 'awaiting'))).toHaveLength(150);
     expect(mixed.filter((row) => loadMatchesFilter(row, 'open'))).toHaveLength(150);
+  });
+
+  test('unit: a load with no sales is labeled clearly', () => {
+    expect(fieldLoadHasSales({ sales: [], units_sold: 0, lines: [] })).toBe(false);
+    expect(fieldLoadNoSalesLabel({ status: 'open', sales: [] })).toBe('No sales yet on this load.');
+    expect(fieldLoadNoSalesLabel({ status: 'accepted', sales: [] })).toBe('No sales on this load.');
+    expect(fieldLoadSaleCount({ sales: [] })).toBe(0);
+  });
+
+  test('corrected: sales on the load clear the empty label', () => {
+    const withSales = {
+      status: 'open',
+      sales: [{ id: 1, sale_number: 'S-1', total: '100.00' }],
+      units_sold: 2,
+    };
+    expect(fieldLoadHasSales(withSales)).toBe(true);
+    expect(fieldLoadNoSalesLabel(withSales)).toBe('');
+    expect(fieldLoadSaleCount(withSales)).toBe(1);
+    expect(fieldLoadHasSales({ sales: [], units_sold: 0, lines: [{ quantity_sold: 3 }] })).toBe(true);
+  });
+
+  test('stress: empty-sale detection stays correct across many loads', () => {
+    for (let i = 0; i < 400; i += 1) {
+      const empty = { sales: [], units_sold: 0, lines: [{ quantity_sold: 0 }] };
+      const filled = { sales: [{ id: i }], units_sold: i + 1 };
+      expect(fieldLoadHasSales(empty)).toBe(false);
+      expect(fieldLoadHasSales(filled)).toBe(true);
+    }
+  });
+
+  test('security: no-sale helpers never echo a phone number', () => {
+    const label = fieldLoadNoSalesLabel({
+      status: 'open',
+      sales: [],
+      agent_phone: '0718000999',
+    });
+    expect(label).toBe('No sales yet on this load.');
+    expect(label).not.toMatch(/07\d/);
+    expect(fieldLoadHasSales(null)).toBe(false);
   });
 });

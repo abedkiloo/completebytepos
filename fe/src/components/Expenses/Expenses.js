@@ -20,6 +20,10 @@ import {
   getPermissionsFromStorage,
   isMakerCheckerEnabled,
 } from '../../utils/makerChecker';
+import {
+  approvalWaitingRowClassName,
+  statusNeedsManagerAction,
+} from '../../utils/approvalDisplay';
 import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
 import {
   buildExpenseFilterParams,
@@ -636,7 +640,11 @@ const Expenses = () => {
                 {expenses.map((expense) => {
                   const hasNotes = Boolean(String(expense.notes || '').trim());
                   return (
-                  <DataTableRow key={expense.id}>
+                  <DataTableRow
+                    key={expense.id}
+                    className={statusNeedsManagerAction(expense.status) ? approvalWaitingRowClassName() : undefined}
+                    data-action-needed={statusNeedsManagerAction(expense.status) ? 'true' : undefined}
+                  >
                     <DataTableCell className="font-medium">
                       {expense.expense_number}
                     </DataTableCell>

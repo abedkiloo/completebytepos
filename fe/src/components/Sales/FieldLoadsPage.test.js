@@ -35,6 +35,7 @@ const pending = {
   id: 7,
   status: 'pending_review',
   agent_name: 'Asha',
+  units_sold: 15,
   lines: [
     {
       id: 1,
@@ -48,6 +49,29 @@ const pending = {
     },
   ],
   money: { expected: '750.00', collected: '750.00' },
+  sales: [{ id: 9, sale_number: 'S-9', total: '750.00', customer_name: 'Field Duka', payment_method: 'cash' }],
+};
+
+const noSalesLoad = {
+  id: 8,
+  status: 'open',
+  agent_name: 'Kamau',
+  reference: 'FL-2026-8',
+  units_sold: 0,
+  lines: [
+    {
+      id: 2,
+      product_id: 4,
+      product_name: 'Cups',
+      quantity_taken: 10,
+      quantity_sold: 0,
+      quantity_returned: null,
+      quantity_missing: null,
+      still_out: 10,
+      unit_price: '50.00',
+    },
+  ],
+  money: { expected: '0.00', collected: '0.00', cash: '0.00', mpesa: '0.00', credit: '0.00' },
   sales: [],
 };
 
@@ -77,12 +101,27 @@ describe('FieldLoadsPage', () => {
     expect(screen.queryByText('Create new field load')).not.toBeInTheDocument();
   });
 
+  test('corrected: an open load with no sales says so on the list and detail', async () => {
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: { can_issue: true, can_approve: false, results: [noSalesLoad] },
+    });
+    render(<FieldLoadsPage />);
+    expect(await screen.findByText('No sales yet on this load.')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Kamau'));
+    expect(await screen.findByTestId('field-load-no-sales')).toHaveTextContent(
+      'No sales yet on this load.',
+    );
+    expect(screen.queryByTestId('field-load-sales-list')).not.toBeInTheDocument();
+  });
+
   test('a manager can accept a counted load and an agent does not see issue controls', async () => {
     render(<FieldLoadsPage />);
     expect((await screen.findAllByText('Asha')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Approve reconciliation' })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /Asha/ }));
+    expect(screen.getByTestId('field-load-send-back-return')).toBeInTheDocument();
+    expect(screen.getByTestId('field-load-send-back-return').className).toMatch(/warning/);
     await userEvent.click(screen.getByRole('button', { name: 'Approve reconciliation' }));
     await waitFor(() => expect(fieldLoadsAPI.accept).toHaveBeenCalledWith(7, {}));
   });
@@ -119,7 +158,10 @@ describe('FieldLoadsPage', () => {
     const withLegs = {
       ...openLoad,
       lines: [
-        ...openLoad.lines,
+        {
+          ...openLoad.lines[0],
+          unit_price: '50.00',
+        },
         {
           id: 2,
           product_id: 5,
@@ -128,6 +170,7 @@ describe('FieldLoadsPage', () => {
           quantity_sold: 0,
           quantity_returned: null,
           quantity_missing: null,
+          unit_price: '50.00',
         },
       ],
     };
@@ -135,19 +178,21 @@ describe('FieldLoadsPage', () => {
       data: { can_issue: true, can_approve: false, results: [withLegs] },
     });
     fieldLoadsAPI.agents.mockResolvedValue({ data: { results: [{ id: 2, name: 'Asha' }] } });
+    customersAPI.list.mockResolvedValue({
+      data: { results: [{ id: 3, name: 'Field Duka', phone: '0718000003' }] },
+    });
     render(<FieldLoadsPage />);
     await userEvent.click(await screen.findByRole('button', { name: /Asha/ }));
     expect(screen.getByText(/every product in this sale/i)).toBeInTheDocument();
     expect(screen.getByText('Legs')).toBeInTheDocument();
     expect(screen.getByText('Cups')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Submit for approval' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Create new field load' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Debt' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Record a field load sale' })).toBeDisabled();
-    expect(screen.getByText(/does not create a field order/i)).toBeInTheDocument();
     await userEvent.type(screen.getByLabelText('Quantity of Cups'), '1');
     await userEvent.type(screen.getByLabelText('Quantity of Legs'), '2');
-    expect(await screen.findByRole('option', { name: 'Field Duka' })).toBeInTheDocument();
-    await userEvent.selectOptions(screen.getByLabelText('Customer'), '3');
+    await userEvent.click(screen.getByText('Walk-in customer'));
+    expect(await screen.findByText('Field Duka')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Field Duka'));
     await userEvent.clear(screen.getByLabelText('Amount received'));
     await userEvent.type(screen.getByLabelText('Amount received'), '50');
     await userEvent.click(screen.getByRole('button', { name: 'Record a field load sale' }));
@@ -162,7 +207,42 @@ describe('FieldLoadsPage', () => {
       client_channel: 'web',
       notes: '',
     }));
-    expect(screen.queryByRole('button', { name: 'Approve reconciliation' })).not.toBeInTheDocument();
+  });
+
+  test('corrected: debt sale requires a searchable customer and posts on account', async () => {
+    const openCups = {
+      ...openLoad,
+      sales: [],
+      units_sold: 0,
+      lines: [{
+        ...openLoad.lines[0],
+        quantity_sold: 0,
+        unit_price: '50.00',
+      }],
+    };
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: { can_issue: true, can_approve: false, results: [openCups] },
+    });
+    customersAPI.list.mockResolvedValue({
+      data: { results: [{ id: 3, name: 'Field Duka', phone: '0718000003' }] },
+    });
+    fieldLoadsAPI.sell.mockResolvedValue({ data: openCups });
+    render(<FieldLoadsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: /Asha/ }));
+    await userEvent.type(screen.getByLabelText('Quantity of Cups'), '1');
+    await userEvent.click(screen.getByRole('button', { name: 'Debt' }));
+    expect(screen.getByText(/Debt puts the full sale/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Record a field load sale' }));
+    expect(fieldLoadsAPI.sell).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByText('Select customer'));
+    expect(await screen.findByText('Field Duka')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Field Duka'));
+    await userEvent.click(screen.getByRole('button', { name: 'Record a field load sale' }));
+    await waitFor(() => expect(fieldLoadsAPI.sell).toHaveBeenCalledWith(7, expect.objectContaining({
+      customer_id: 3,
+      amount_paid: 0,
+      payment_method: 'debt',
+    })));
   });
 
   test('a sales person sees their own name and cannot pick someone else', async () => {

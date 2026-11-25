@@ -309,7 +309,11 @@ const Income = () => {
               </DataTableHeader>
               <DataTableBody>
                 {incomes.map((income) => (
-                  <DataTableRow key={income.id}>
+                  <DataTableRow
+                    key={income.id}
+                    className={income.status === 'pending' ? 'border-l-4 border-l-warning bg-warning/10' : undefined}
+                    data-action-needed={income.status === 'pending' ? 'true' : undefined}
+                  >
                     <DataTableCell className="font-medium">{income.income_number}</DataTableCell>
                     <DataTableCell className="text-muted-foreground whitespace-nowrap">
                       {formatDate(income.income_date)}

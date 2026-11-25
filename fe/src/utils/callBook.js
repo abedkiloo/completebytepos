@@ -138,3 +138,53 @@ export function customerCategoryLabel(segment) {
   if (!segment || segment === 'none') return 'Not yet a buyer';
   return 'Existing customer';
 }
+
+/**
+ * Unique caller names from a week of call entries.
+ *
+ * @param {Array<{called_by?: string}>|null|undefined} callers API caller rows.
+ * @returns {string} Comma-separated names, at most 5 shown then "+N more".
+ *   Empty when there are no names. Never a phone number.
+ */
+export function callerNamesLine(callers) {
+  if (!Array.isArray(callers) || !callers.length) return '';
+  const names = [];
+  const seen = new Set();
+  for (const entry of callers) {
+    const name = String(entry?.called_by || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  if (!names.length) return '';
+  if (names.length <= 5) return names.join(', ');
+  return `${names.slice(0, 5).join(', ')} +${names.length - 5} more`;
+}
+
+/**
+ * Short note when last week's callers differ from this week's.
+ *
+ * @param {object|null|undefined} row Call-book row with caller lists.
+ * @returns {string} One sentence, or empty when unchanged / incomplete.
+ */
+export function callerChangedLine(row) {
+  if (!row?.caller_changed) return '';
+  const thisWeek = callerNamesLine(row.callers_this_week);
+  const lastWeek = callerNamesLine(row.callers_last_week);
+  if (!thisWeek || !lastWeek) return 'Different people called this week.';
+  return `This week: ${thisWeek}. Last week: ${lastWeek}.`;
+}
+
+/**
+ * Claim message when another person owns the customer for the day.
+ *
+ * @param {object|null|undefined} hold Hold payload from the book.
+ * @returns {string} Message for the UI. Empty when free or held by me.
+ */
+export function dayClaimBlockedLine(hold) {
+  if (!hold || hold.held_by_me) return '';
+  const name = String(hold.held_by || 'Another staff member').trim() || 'Another staff member';
+  return `${name} claimed this customer for today. Only one person can call them today.`;
+}

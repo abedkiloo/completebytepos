@@ -209,3 +209,47 @@ export function describeApprovalSummary(row) {
   const item = formatEntityTypeLabel(row?.entity_type, row?.entity_repr);
   return { action, item, headline: `${action} — ${item}` };
 }
+
+/** Statuses that need a manager (or checker) to act. */
+const MANAGER_ACTION_STATUSES = new Set([
+  'pending',
+  'pending_approval',
+  'awaiting_issue',
+  'pending_review',
+]);
+
+/**
+ * Whether this status is waiting on a manager decision.
+ *
+ * @param {string|null|undefined} status Workflow status key.
+ * @returns {boolean} True for pending / awaiting manager states.
+ */
+export function statusNeedsManagerAction(status) {
+  const key = String(status || '').trim().toLowerCase();
+  return MANAGER_ACTION_STATUSES.has(key);
+}
+
+/**
+ * Badge variant for items a manager must act on.
+ *
+ * @returns {'warning'} Amber action tone used across approval desks.
+ */
+export function approvalWaitingBadgeVariant() {
+  return 'warning';
+}
+
+/**
+ * Row classes so waiting approvals read as action items.
+ *
+ * @param {object} [options]
+ * @param {boolean} [options.selected=false] Whether the row is open/selected.
+ * @returns {string} Tailwind class string. Never includes a phone or secret.
+ */
+export function approvalWaitingRowClassName({ selected = false } = {}) {
+  const parts = [
+    'border-l-4 border-l-warning bg-warning/10',
+    'hover:bg-warning/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+  ];
+  if (selected) parts.push('bg-warning/20');
+  return parts.join(' ');
+}

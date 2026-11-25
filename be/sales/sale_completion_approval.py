@@ -883,7 +883,12 @@ def approve_queued_sale(
 
 
 def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
-    """Re-check stock, move inventory, apply payment, post the journal."""
+    """
+    Re-check stock when needed, move inventory, apply payment, post the journal.
+
+    Field-load sales already took shop stock when the load was issued, so this
+    path skips stock checks and stock movements for ``entry_source='field_load'``.
+    """
     if sale.status not in ('pending_approval', 'awaiting_payment'):
         raise ValidationError(COMPLETE_NOT_READY)
 
@@ -903,9 +908,14 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
     if not items_data:
         raise ValidationError('Cannot complete an empty sale.')
 
+    is_field_load = getattr(sale, 'entry_source', '') == 'field_load'
     validated_items = service.validate_sale_items(
         items_data,
-        check_stock=sales_validate_stock_before_sale(),
+        check_stock=(
+            False
+            if is_field_load
+            else sales_validate_stock_before_sale()
+        ),
         user=user,
     )
 
@@ -942,6 +952,7 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
     # Drain stock against existing sale lines (prices already locked at checkout).
     # Always refresh unit_cost from the validated FIFO plan when available so
     # qty/line corrections after admin return stamp accurate COGS on re-approve.
+    # Field-load sales already left the shop on issue — never move stock again.
     for sale_item in sale.items.select_related('product', 'variant'):
         if not sale_item.product.track_stock:
             continue
@@ -967,6 +978,8 @@ def complete_queued_sale(sale: Sale, user, payload: dict | None = None) -> Sale:
         if unit_cost != sale_item.unit_cost:
             SaleItem.objects.filter(pk=sale_item.pk).update(unit_cost=unit_cost)
             sale_item.unit_cost = unit_cost
+        if is_field_load:
+            continue
         from inventory.checkpoint_services import should_skip_stock_for_past_sale
 
         if (

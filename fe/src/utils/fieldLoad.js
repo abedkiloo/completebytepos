@@ -130,3 +130,44 @@ export function statusLabel(status) {
   if (status === 'issue_rejected') return 'Sent back';
   return 'Open';
 }
+
+/**
+ * How many completed sales are on this load.
+ *
+ * @param {object|null|undefined} load Serialized load with optional `sales`
+ *   and `units_sold`.
+ * @returns {number} 0 or more. Prefers `sales.length`, else units sold.
+ */
+export function fieldLoadSaleCount(load) {
+  if (!load) return 0;
+  if (Array.isArray(load.sales)) return load.sales.length;
+  const sold = Number(load.units_sold);
+  return Number.isFinite(sold) && sold > 0 ? 1 : 0;
+}
+
+/**
+ * Whether this load has recorded any field-load sales yet.
+ *
+ * @param {object|null|undefined} load Serialized load.
+ * @returns {boolean} True when at least one sale exists or units were sold.
+ */
+export function fieldLoadHasSales(load) {
+  if (!load) return false;
+  if (fieldLoadSaleCount(load) > 0) return true;
+  const sold = Number(load.units_sold);
+  if (Number.isFinite(sold) && sold > 0) return true;
+  const lines = Array.isArray(load.lines) ? load.lines : [];
+  return lines.some((line) => Number(line?.quantity_sold) > 0);
+}
+
+/**
+ * Short empty-state line when a load has no sales.
+ *
+ * @param {object|null|undefined} load Serialized load.
+ * @returns {string} Empty when there are sales. Otherwise a clear sentence.
+ */
+export function fieldLoadNoSalesLabel(load) {
+  if (fieldLoadHasSales(load)) return '';
+  if (load?.status === 'open') return 'No sales yet on this load.';
+  return 'No sales on this load.';
+}

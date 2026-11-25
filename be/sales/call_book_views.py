@@ -13,10 +13,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import RequirePerm
+from datetime import datetime
+
 from sales.call_book import (
     build_call_book,
+    build_day_call_log,
     hold_customer,
     mark_called,
+    nairobi_today,
     plan_payload,
     replace_plan,
     user_may_edit_call_plan,
@@ -71,8 +75,34 @@ _STATUS = {
     'bad_date': status.HTTP_400_BAD_REQUEST,
     'bad_time': status.HTTP_400_BAD_REQUEST,
     'held': status.HTTP_409_CONFLICT,
+    'called_today': status.HTTP_409_CONFLICT,
     'bad_plan': status.HTTP_400_BAD_REQUEST,
 }
+
+
+def _query_date(raw):
+    """
+    Read an optional YYYY-MM-DD query for the day call log.
+
+    Args:
+        raw: Query value. Blank means Nairobi today. Invalid text is ignored
+            and treated as today.
+
+    Returns:
+        date: Parsed calendar day, or ``nairobi_today`` when blank/invalid.
+
+    Raises:
+        None.
+    """
+    if raw is None or str(raw).strip() == '':
+        return nairobi_today()
+    text = str(raw).strip()
+    if len(text) != 10:
+        return nairobi_today()
+    try:
+        return datetime.strptime(text, '%Y-%m-%d').date()
+    except ValueError:
+        return nairobi_today()
 
 
 class CallBookView(APIView):
@@ -174,21 +204,22 @@ class CallBookMarkView(APIView):
 
 
 class CallBookHoldView(APIView):
-    """Reserve one customer for a few minutes while the caller dials."""
+    """Claim one customer for the rest of the Nairobi day while dialing."""
 
     permission_classes = [IsAuthenticated, _PERM, _CallBookFeature]
 
     def post(self, request, customer_id: int):
         """
-        Hold the customer for the configured number of minutes.
+        Claim the customer until end of day so only this person can call them.
 
         Args:
             request: Authenticated call. Body is ignored.
             customer_id: Customer primary key.
 
         Returns:
-            Response: 200 with expiry, 409 if someone else holds them, 400
-            on the weekend or when there is no number. No phone in the body.
+            Response: 200 with expiry and ``day_claim``, 409 if someone else
+            already claimed or called them today, 400 on the weekend or when
+            there is no number. No phone in the body.
 
         Raises:
             None.
@@ -204,10 +235,50 @@ class CallBookHoldView(APIView):
                 request,
                 customer,
                 kind='held',
-                detail={'hold_minutes': payload.get('hold_minutes')},
+                detail={
+                    'day_claim': True,
+                    'expires_at': payload.get('expires_at'),
+                },
             )
         http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
         return Response(payload, status=http)
+
+
+class CallBookDayLogView(APIView):
+    """Who called which customers on one Nairobi calendar day."""
+
+    permission_classes = [IsAuthenticated, _PERM, _CallBookFeature]
+
+    def get(self, request):
+        """
+        List call records for one day.
+
+        Args:
+            request: Query ``date`` (YYYY-MM-DD, optional), ``page`` (1+),
+            and ``page_size`` (1–1000). Blank date uses Nairobi today.
+
+        Returns:
+            Response: Day ISO date, unique caller names, and one page of
+            call rows without phone numbers. Anonymous callers get 401.
+            Missing feature or permission is 403.
+
+        Raises:
+            None.
+        """
+        try:
+            page = int(request.query_params.get('page') or 1)
+        except (TypeError, ValueError):
+            page = 1
+        try:
+            page_size = int(request.query_params.get('page_size') or 100)
+        except (TypeError, ValueError):
+            page_size = 100
+        payload = build_day_call_log(
+            day=_query_date(request.query_params.get('date')),
+            page=page,
+            page_size=page_size,
+        )
+        return Response(payload)
 
 
 class CallBookPlanView(APIView):

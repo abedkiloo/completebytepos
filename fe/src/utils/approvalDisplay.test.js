@@ -1,4 +1,6 @@
 import {
+  approvalWaitingBadgeVariant,
+  approvalWaitingRowClassName,
   buildApprovalDiffRows,
   describeApprovalSummary,
   expenseApprovalDetails,
@@ -6,6 +8,7 @@ import {
   formatApprovalValue,
   formatEntityTypeLabel,
   formatFieldLabel,
+  statusNeedsManagerAction,
 } from './approvalDisplay';
 
 describe('approvalDisplay', () => {
@@ -103,5 +106,42 @@ describe('approvalDisplay', () => {
     expect(
       expenseApprovalDetails({ payment_method: 'wire' }).sections[0].facts[0]
     ).toEqual({ label: 'Payment method', value: 'wire' });
+  });
+
+  test('unit: manager-action statuses use the warning action tone', () => {
+    expect(statusNeedsManagerAction('pending')).toBe(true);
+    expect(statusNeedsManagerAction('pending_approval')).toBe(true);
+    expect(statusNeedsManagerAction('awaiting_issue')).toBe(true);
+    expect(statusNeedsManagerAction('pending_review')).toBe(true);
+    expect(statusNeedsManagerAction('approved')).toBe(false);
+    expect(statusNeedsManagerAction('')).toBe(false);
+    expect(approvalWaitingBadgeVariant()).toBe('warning');
+    expect(approvalWaitingRowClassName()).toContain('border-l-warning');
+    expect(approvalWaitingRowClassName()).toContain('bg-warning/10');
+    expect(approvalWaitingRowClassName({ selected: true })).toContain('bg-warning/20');
+  });
+
+  test('stress: action tone helpers stay stable across many statuses', () => {
+    const keys = Array.from({ length: 400 }, (_, i) => (
+      i % 5 === 0 ? 'pending_approval' : i % 5 === 1 ? 'awaiting_issue' : `other_${i}`
+    ));
+    let actionCount = 0;
+    keys.forEach((key) => {
+      if (statusNeedsManagerAction(key)) actionCount += 1;
+      expect(approvalWaitingBadgeVariant()).toBe('warning');
+    });
+    expect(actionCount).toBe(160);
+  });
+
+  test('security: action style helpers never embed secrets or phones', () => {
+    const classes = approvalWaitingRowClassName({ selected: true });
+    expect(classes).not.toMatch(/07\d|token|password|secret/i);
+    expect(statusNeedsManagerAction('0718000999')).toBe(false);
+  });
+
+  test('corrected: waiting rows keep an action color distinct from muted secondary', () => {
+    const classes = approvalWaitingRowClassName();
+    expect(classes).toMatch(/warning/);
+    expect(classes).not.toMatch(/secondary|muted\/50/);
   });
 });

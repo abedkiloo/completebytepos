@@ -3,12 +3,22 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { customersAPI, fieldLoadsAPI, productsAPI } from '../../services/api';
 import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { displayStatus, loadMatchesFilter, missingUnits, saleBasketTotal, shortageUnits, statusLabel } from '../../utils/fieldLoad';
+import {
+  displayStatus,
+  fieldLoadHasSales,
+  fieldLoadNoSalesLabel,
+  loadMatchesFilter,
+  missingUnits,
+  saleBasketTotal,
+  shortageUnits,
+  statusLabel,
+} from '../../utils/fieldLoad';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { PageHeader, PageShell } from '../page';
 import { isFeatureEnabled } from '../../utils/moduleSettings';
+import { CustomerPicker } from '../POS/v2/CustomerPicker';
 
 const FILTERS = [
   { id: 'all', label: 'All', empty: 'No field loads yet.' },
@@ -128,11 +138,19 @@ export default function FieldLoadsPage() {
             <p className="text-sm text-muted-foreground">{activeFilter.empty}</p>
           )}
           <ul className="space-y-2">
-            {visible.map((row) => (
+            {visible.map((row) => {
+              const shown = displayStatus(row);
+              const needsAction = shown === 'awaiting_issue' || shown === 'pending_review';
+              return (
               <li key={row.id}>
                 <button
                   type="button"
-                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-card px-3 py-3 text-left"
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left ${
+                    needsAction
+                      ? 'border-warning/40 bg-warning/10'
+                      : 'border-border bg-card'
+                  }`}
+                  data-action-needed={needsAction ? 'true' : undefined}
                   onClick={() => {
                     setSelectedId(row.id);
                     setView('detail');
@@ -143,14 +161,17 @@ export default function FieldLoadsPage() {
                     <span className="text-sm text-muted-foreground">{row.reference || `Load ${row.id}`}</span>
                   </span>
                   <span className="text-right">
-                    <StatusBadge status={displayStatus(row)} />
+                    <StatusBadge status={shown} />
                     <span className="mt-1 block text-sm text-muted-foreground">
-                      Expected {formatCurrency(row.money?.expected)}
+                      {fieldLoadHasSales(row)
+                        ? `Expected ${formatCurrency(row.money?.expected)}`
+                        : fieldLoadNoSalesLabel(row)}
                     </span>
                   </span>
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </>
       )}
@@ -183,12 +204,21 @@ export default function FieldLoadsPage() {
 function StatusBadge({ status }) {
   const tone = status === 'shortage'
     ? 'bg-warning/15 text-warning'
-    : status === 'accepted'
-      ? 'bg-primary/10 text-primary'
-      : status === 'open'
-        ? 'bg-success/15 text-success'
-        : 'bg-secondary text-secondary-foreground';
-  return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>{statusLabel(status)}</span>;
+    : status === 'awaiting_issue' || status === 'pending_review'
+      ? 'bg-warning text-warning-foreground'
+      : status === 'accepted'
+        ? 'bg-primary/10 text-primary'
+        : status === 'open'
+          ? 'bg-success/15 text-success'
+          : 'bg-secondary text-secondary-foreground';
+  return (
+    <span
+      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}
+      data-action-needed={status === 'awaiting_issue' || status === 'pending_review' ? 'true' : undefined}
+    >
+      {statusLabel(status)}
+    </span>
+  );
 }
 
 /**
@@ -740,14 +770,15 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
   const [returns, setReturns] = useState({});
   const [saleQtys, setSaleQtys] = useState({});
   const [paid, setPaid] = useState('');
-  const [customerId, setCustomerId] = useState('');
-  const [customers, setCustomers] = useState([]);
+  const [customer, setCustomer] = useState(null);
   const [counting, setCounting] = useState(false);
   const [payment, setPayment] = useState('cash');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const shown = displayStatus(load);
   const short = shortageUnits(load.lines);
+  const isDebt = payment === 'debt' || payment === 'credit' || payment === 'on_account';
+  const customerId = customer?.id && customer.id !== 'walk-in' ? customer.id : '';
 
   useEffect(() => {
     const next = {};
@@ -757,15 +788,11 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
     setReturns(next);
     setSaleQtys({});
     setCounting(false);
+    setCustomer(null);
+    setPaid('');
+    setPayment('cash');
+    setNote('');
   }, [load]);
-
-  useEffect(() => {
-    if (load.status !== 'open') return undefined;
-    customersAPI.list({ page_size: 50, is_active: 'true' }).then(({ data }) => {
-      setCustomers(data.results || []);
-    }).catch(() => setCustomers([]));
-    return undefined;
-  }, [load.status]);
 
   const saleRows = load.lines.map((item) => {
     const available = item.available ?? (Number(item.quantity_taken) - Number(item.quantity_sold || 0));
@@ -780,6 +807,16 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
   })));
   const taken = load.units_taken ?? load.lines.reduce((sum, item) => sum + Number(item.quantity_taken || 0), 0);
   const sold = load.units_sold ?? load.lines.reduce((sum, item) => sum + Number(item.quantity_sold || 0), 0);
+
+  useEffect(() => {
+    if (isDebt) {
+      setPaid('0');
+      return;
+    }
+    if (chosen.length > 0 && total > 0) {
+      setPaid(String(total));
+    }
+  }, [isDebt, chosen.length, total]);
 
   /**
    * Set how many of one product go on this sale.
@@ -831,6 +868,11 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
             {load.issued_at ? ` · ${formatDate(load.issued_at)}` : ''}
             {` · Taken ${taken} · Sold ${sold}`}
           </p>
+          {!fieldLoadHasSales(load) && (
+            <p className="mt-1 text-sm font-medium text-muted-foreground" data-testid="field-load-no-sales">
+              {fieldLoadNoSalesLabel(load)}
+            </p>
+          )}
         </div>
         <StatusBadge status={shown} />
       </div>
@@ -866,8 +908,9 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
               </Button>
               <Button
                 type="button"
-                variant="outline"
+                variant="warning"
                 disabled={busy}
+                data-testid="field-load-send-back-issue"
                 onClick={() => run(
                   () => fieldLoadsAPI.declineIssue(load.id, { note: 'Check the quantities' }),
                   'Sent back to the sales person.',
@@ -886,10 +929,10 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
 
       {load.status === 'open' && !counting && (
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <div className="order-2 space-y-2 lg:order-1">
+          <div className="order-1 space-y-2 lg:order-1">
             <h3 className="text-sm font-semibold">Sell from this load</h3>
             <p className="text-sm text-muted-foreground">
-              Enter a quantity for every product in this sale. Leave the others blank. These pieces are already on the load.
+              Select the goods first. Enter a quantity for every product in this sale. Leave the others blank. These pieces are already on the load.
             </p>
             {saleRows.map((row) => (
               <div
@@ -946,7 +989,7 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
               Return to shop
             </Button>
           </div>
-        <div className="order-1 space-y-3 rounded-lg border border-border bg-card p-3 lg:sticky lg:top-4 lg:order-2">
+        <div className="order-2 space-y-3 rounded-lg border border-border bg-card p-3 lg:sticky lg:top-4 lg:order-2">
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="text-xs text-muted-foreground">Sale total</p>
@@ -959,48 +1002,53 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
           <p className="text-xs text-muted-foreground">
             This does not create a field order and it does not take the units off the shelf again.
           </p>
-          <label className="block text-sm">
-            <span className="mb-1 block text-xs text-muted-foreground">Customer</span>
-            <select
-              className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-              aria-label="Customer"
-              value={customerId}
-              onChange={(event) => setCustomerId(event.target.value)}
-            >
-              <option value="">Walk-in, fully paid</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>{customer.name}</option>
-              ))}
-            </select>
-          </label>
+          <div className="space-y-1">
+            <span className="block text-xs text-muted-foreground">
+              {isDebt ? 'Customer (required for debt)' : 'Customer'}
+            </span>
+            <CustomerPicker
+              selectedCustomer={customer}
+              requireCustomer={isDebt}
+              showWalletBalance
+              onSelect={(next) => {
+                if (!next || next.id === 'walk-in') {
+                  setCustomer(null);
+                  return;
+                }
+                setCustomer(next);
+              }}
+            />
+          </div>
           <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Payment">
             {[
               ['cash', 'Cash'],
               ['mpesa', 'M-Pesa'],
-              ['credit', 'Credit'],
+              ['debt', 'Debt'],
             ].map(([value, label]) => (
-              <label
+              <Button
                 key={value}
-                className={`flex h-9 cursor-pointer items-center justify-center rounded-md text-sm ${payment === value ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
+                type="button"
+                size="sm"
+                variant={payment === value ? 'default' : 'secondary'}
+                className="h-9"
+                aria-pressed={payment === value}
+                onClick={() => setPayment(value)}
               >
-                <input
-                  type="radio"
-                  className="sr-only"
-                  name="field-load-payment"
-                  value={value}
-                  checked={payment === value}
-                  onChange={() => setPayment(value)}
-                />
                 {label}
-              </label>
+              </Button>
             ))}
           </div>
+          {isDebt && (
+            <p className="text-xs text-muted-foreground">
+              Debt puts the full sale on this customer&apos;s account. Nothing is received now.
+            </p>
+          )}
           <label className="block text-sm">
             <span className="mb-1 block text-xs text-muted-foreground">Amount received</span>
             <Input
               aria-label="Amount received"
-              value={payment === 'credit' ? '0' : paid}
-              disabled={payment === 'credit'}
+              value={isDebt ? '0' : paid}
+              disabled={isDebt}
               onChange={(event) => setPaid(event.target.value)}
             />
           </label>
@@ -1012,21 +1060,42 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
             type="button"
             variant="success"
             disabled={busy || chosen.length === 0}
-            onClick={() => run(
-              () => fieldLoadsAPI.sell(load.id, {
-                lines: chosen.map((row) => ({
-                  product_id: row.item.product_id,
-                  ...(row.item.variant_id ? { variant_id: row.item.variant_id } : {}),
-                  quantity: row.quantity,
-                })),
-                customer_id: customerId ? Number(customerId) : null,
-                amount_paid: payment === 'credit' ? 0 : (paid || 0),
-                payment_method: payment,
-                client_channel: 'web',
-                notes: note,
-              }),
-              'Field load sale recorded. Shop stock was not taken again.',
-            )}
+            onClick={() => {
+              if (isDebt && !customerId) {
+                toast.error('Choose a customer for a debt sale.');
+                return;
+              }
+              const amount = isDebt ? 0 : Number(paid);
+              if (!isDebt && (!Number.isFinite(amount) || amount < 0)) {
+                toast.error('Enter the amount received.');
+                return;
+              }
+              if (payment === 'mpesa' && Number(amount) !== Number(total)) {
+                toast.error('M-Pesa must pay this sale in full.');
+                return;
+              }
+              if (!isDebt && Number(amount) < Number(total) && !customerId) {
+                toast.error('Choose a customer when the sale is not fully paid.');
+                return;
+              }
+              run(
+                () => fieldLoadsAPI.sell(load.id, {
+                  lines: chosen.map((row) => ({
+                    product_id: row.item.product_id,
+                    ...(row.item.variant_id ? { variant_id: row.item.variant_id } : {}),
+                    quantity: row.quantity,
+                  })),
+                  customer_id: customerId ? Number(customerId) : null,
+                  amount_paid: isDebt ? 0 : (paid || 0),
+                  payment_method: isDebt ? 'debt' : payment,
+                  client_channel: 'web',
+                  notes: note,
+                }),
+                isDebt
+                  ? 'Field load debt sale recorded on the customer.'
+                  : 'Field load sale recorded. Shop stock was not taken again.',
+              );
+            }}
           >
             Record a field load sale
           </Button>
@@ -1113,12 +1182,42 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
             </tbody>
           </table>
           <h3 className="text-base font-semibold">Sales on this load</h3>
-          <dl className="space-y-1 text-sm">
-            <div className="flex justify-between"><dt>Expected sales value</dt><dd>{formatCurrency(load.money?.expected)}</dd></div>
-            <div className="flex justify-between"><dt>Cash received</dt><dd>{formatCurrency(load.money?.cash)}</dd></div>
-            <div className="flex justify-between"><dt>M-Pesa received</dt><dd>{formatCurrency(load.money?.mpesa)}</dd></div>
-            <div className="flex justify-between"><dt>Customer credit</dt><dd>{formatCurrency(load.money?.credit)}</dd></div>
-          </dl>
+          {!fieldLoadHasSales(load) ? (
+            <p className="text-sm text-muted-foreground" data-testid="field-load-no-sales-section">
+              {fieldLoadNoSalesLabel(load)}
+            </p>
+          ) : (
+            <>
+              <ul className="space-y-2" data-testid="field-load-sales-list">
+                {(load.sales || []).map((sale) => (
+                  <li
+                    key={sale.id}
+                    className="flex items-center justify-between gap-2 border-b border-border py-2 text-sm"
+                  >
+                    <span className="min-w-0">
+                      <span className="block font-medium">{sale.sale_number || `Sale ${sale.id}`}</span>
+                      <span className={`block text-xs ${sale.status === 'pending_approval' ? 'font-medium text-warning' : 'text-muted-foreground'}`}>
+                        {[
+                          sale.status === 'pending_approval' ? 'Waiting for manager approval' : null,
+                          sale.customer_name,
+                          sale.payment_method,
+                        ].filter(Boolean).join(' · ') || 'Field load sale'}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-semibold tabular-nums">
+                      {formatCurrency(sale.total)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <dl className="space-y-1 text-sm">
+                <div className="flex justify-between"><dt>Expected sales value</dt><dd>{formatCurrency(load.money?.expected)}</dd></div>
+                <div className="flex justify-between"><dt>Cash received</dt><dd>{formatCurrency(load.money?.cash)}</dd></div>
+                <div className="flex justify-between"><dt>M-Pesa received</dt><dd>{formatCurrency(load.money?.mpesa)}</dd></div>
+                <div className="flex justify-between"><dt>Customer credit</dt><dd>{formatCurrency(load.money?.credit)}</dd></div>
+              </dl>
+            </>
+          )}
           {short > 0 && (
             <div className="rounded-xl bg-warning/15 p-3 text-sm">
               <p className="font-medium text-warning">Shortage identified</p>
@@ -1141,9 +1240,9 @@ function LoadDetail({ load, canApprove, onChange, onBack }) {
           </Button>
           <Button
             type="button"
-            variant="outline"
-            className="text-destructive"
+            variant="warning"
             disabled={busy}
+            data-testid="field-load-send-back-return"
             onClick={() => run(() => fieldLoadsAPI.reject(load.id, { note: 'Count again' }), 'Sent back to be counted again.', true)}
           >
             Send back for correction

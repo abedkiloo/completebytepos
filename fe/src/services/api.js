@@ -516,6 +516,7 @@ export const customersAPI = {
   holdCall: (customerId) => api.post(`/sales/call-book/${customerId}/hold/`, {}),
   callBookPlan: () => api.get('/sales/call-book/plan/'),
   saveCallBookPlan: (data) => api.put('/sales/call-book/plan/', data),
+  callBookDayLog: (params) => api.get('/sales/call-book/day-log/', { params }),
   get: (id) => api.get(`/sales/customers/${id}/`),
   /** Lifetime profile: standing, orders, debt/payment trail. */
   detail: (id, params) => api.get(`/sales/customers/${id}/detail/`, { params }),

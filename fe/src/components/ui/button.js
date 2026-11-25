@@ -7,6 +7,7 @@ import { cn } from '../../lib/cn';
  * Variants reflect the actions a POS actually needs, not generic web buttons.
  *  - default: primary call-to-action (Complete sale, Pay now)
  *  - success: explicitly affirmative actions (Mark paid, Confirm cash payment)
+ *  - warning: send back / return for check (amber action, not a hard void)
  *  - destructive: void / refund / remove line item / cancel sale
  *  - outline: neutral secondary action (Hold sale, Print again)
  *  - ghost: low-emphasis, used inside tables and toolbars
@@ -22,6 +23,7 @@ const buttonVariants = cva(
       variant: {
         default: 'bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80',
         success: 'bg-success text-success-foreground hover:bg-success/90 active:bg-success/80',
+        warning: 'bg-warning text-warning-foreground hover:bg-warning/90 active:bg-warning/80',
         destructive: 'bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/80',
         outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
         secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',

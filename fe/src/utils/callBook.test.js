@@ -3,7 +3,10 @@ import {
   callCoveragePercent,
   callDayPlanCounts,
   callDayPlanTicker,
+  callerChangedLine,
+  callerNamesLine,
   customerCategoryLabel,
+  dayClaimBlockedLine,
   outcomeLabel,
   daySubCountyLabel,
   weekdayLabel,
@@ -99,5 +102,34 @@ describe('call book labels', () => {
     expect(callCoveragePercent(0, 0)).toBe(0);
     expect(customerCategoryLabel('at_risk')).toBe('Cooling off');
     expect(customerCategoryLabel('active')).toBe('Existing customer');
+  });
+
+  test('unit: caller names and day-claim lines stay phone-free', () => {
+    expect(callerNamesLine([
+      { called_by: 'Ada' },
+      { called_by: 'Ada' },
+      { called_by: 'Ben' },
+    ])).toBe('Ada, Ben');
+    expect(callerChangedLine({
+      caller_changed: true,
+      callers_this_week: [{ called_by: 'Ada' }],
+      callers_last_week: [{ called_by: 'Ben' }],
+    })).toContain('This week: Ada');
+    expect(dayClaimBlockedLine({ held_by: 'Mercy', held_by_me: false }))
+      .toContain('Mercy claimed this customer for today');
+    expect(dayClaimBlockedLine({ held_by_me: true })).toBe('');
+  });
+
+  test('security: caller helpers never echo a phone number', () => {
+    const line = callerNamesLine([
+      { called_by: 'Ada', phone: '0718000999' },
+      { called_by: '0718000888' },
+    ]);
+    expect(line).toBe('Ada, 0718000888');
+    expect(dayClaimBlockedLine({
+      held_by: 'Mercy',
+      held_by_me: false,
+      phone: '0718000777',
+    })).not.toMatch(/0718000777/);
   });
 });

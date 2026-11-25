@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator, EmailValidator
+from django.utils import timezone
 from products.models import Product, ProductVariant
 from decimal import Decimal
 import uuid
@@ -1348,7 +1349,10 @@ class CallBookSettings(models.Model):
     hold_minutes = models.PositiveSmallIntegerField(
         default=5,
         validators=[MinValueValidator(1), MaxValueValidator(30)],
-        help_text='Minutes copying a number reserves the customer. Range 1–30.',
+        help_text=(
+            'Legacy tuning field (1–30). Opening a customer now claims them '
+            'until the end of the Nairobi day regardless of this value.'
+        ),
     )
 
     class Meta:
@@ -1460,7 +1464,11 @@ class CustomerCall(models.Model):
         blank=True,
         related_name='customer_calls',
     )
-    called_at = models.DateTimeField(auto_now_add=True)
+    called_at = models.DateTimeField(
+        default=timezone.now,
+        db_index=True,
+        help_text='When the call was recorded in Africa/Nairobi.',
+    )
     week_start = models.DateField(
         db_index=True,
         help_text='Monday of the call week in Africa/Nairobi.',
@@ -1500,10 +1508,11 @@ class CustomerCall(models.Model):
 
 class CallHold(models.Model):
     """
-    Short reservation so two people do not dial the same shop together.
+    Same-day claim so two people do not dial the same shop on one day.
 
-    One row per customer. Expired rows do not block. Marking the call
-    deletes the hold.
+    One row per customer. Expiry is end of the Nairobi calendar day when
+    claimed. Expired rows do not block. Marking the call deletes the hold;
+    a second person is still blocked that day by the recorded call.
     """
 
     customer = models.OneToOneField(

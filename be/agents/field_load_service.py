@@ -6,7 +6,9 @@ only when a different manager approves that load. A manager writes a load
 for themselves or for another person, and that load is open at once: shop
 stock leaves in the same step and nobody else has to approve it. The other
 people on the list are active sales employees. A field-load sale does
-not remove stock again, and it is not a field order.
+not remove stock again, and it is not a field order. Field agents who
+cannot finalise sales leave each field-load sale on ``pending_approval``
+so a manager can approve it; shop stock still does not move again.
 Accepting the return puts ``quantity_returned`` back on the shelf.
 Missing units stay out: ``taken - sold - returned``.
 
@@ -34,7 +36,11 @@ OPEN_STATUSES = (
     FieldLoad.STATUS_OPEN,
     FieldLoad.STATUS_PENDING,
 )
-LOAD_PAYMENTS = ('cash', 'mpesa', 'credit')
+LOAD_PAYMENTS = ('cash', 'mpesa', 'credit', 'debt', 'on_account')
+
+# Linked sales that reserve units on the load. Pending waits for a manager;
+# completed is final. Holding / cancelled / discarded free the units again.
+LOAD_SALE_ACTIVE_STATUSES = ('completed', 'pending_approval')
 
 
 class FieldLoadError(Exception):
@@ -133,11 +139,11 @@ def _display_name(user) -> str:
 
 def _sold_map(load: FieldLoad) -> dict:
     """
-    Units sold on this load, keyed by (product_id, variant_id).
+    Units sold or reserved on this load, keyed by (product_id, variant_id).
 
     Args:
-        load: Load whose linked completed sales are counted. Refunded sales
-            are excluded.
+        load: Load whose linked sales are counted. Completed and
+            pending-approval sales reserve units. Refunded sales are excluded.
 
     Returns:
         dict: Values are ints 0–100000. No writes.
@@ -147,7 +153,7 @@ def _sold_map(load: FieldLoad) -> dict:
     rows = (
         SaleItem.objects.filter(
             sale__field_load_sale__load=load,
-            sale__status='completed',
+            sale__status__in=LOAD_SALE_ACTIVE_STATUSES,
         )
         .exclude(sale__refund_status='refunded')
         .values('product_id', 'variant_id')
@@ -236,7 +242,7 @@ def serialize_loads(loads) -> list:
     sold_rows = (
         SaleItem.objects.filter(
             sale__field_load_sale__load_id__in=ids,
-            sale__status='completed',
+            sale__status__in=LOAD_SALE_ACTIVE_STATUSES,
         )
         .exclude(sale__refund_status='refunded')
         .values('sale__field_load_sale__load_id', 'product_id', 'variant_id')
@@ -246,7 +252,10 @@ def serialize_loads(loads) -> list:
         sold[(row['sale__field_load_sale__load_id'], row['product_id'], row['variant_id'])] = int(row['qty'] or 0)
     sales_by_load = defaultdict(list)
     sales = (
-        Sale.objects.filter(field_load_sale__load_id__in=ids, status='completed')
+        Sale.objects.filter(
+            field_load_sale__load_id__in=ids,
+            status__in=LOAD_SALE_ACTIVE_STATUSES,
+        )
         .exclude(refund_status='refunded')
         .select_related('customer', 'field_load_sale')
         .order_by('id')
@@ -272,10 +281,12 @@ def _serialize_ready(load, line_rows, sold, sales) -> dict:
         load: The load. People on it are already loaded.
         line_rows: That load's lines, each with its product. 0–40.
         sold: Map of ``(load id, product id, variant id)`` to units sold.
-        sales: Completed sales for this load, customer already loaded. 0–500.
+        sales: Active sales for this load (completed or pending approval),
+            customer already loaded. 0–500.
 
     Returns:
-        dict: The screen payload. No writes.
+        dict: The screen payload. Money totals use completed sales only.
+            Pending sales still reserve units and appear in ``sales``. No writes.
 
     Raises:
         None.
@@ -294,18 +305,19 @@ def _serialize_ready(load, line_rows, sold, sales) -> dict:
         total = Decimal(sale.total or 0)
         paid = Decimal(sale.amount_paid or 0)
         expected += total
-        collected += paid
-        gap = total - paid
-        if gap < 0:
-            gap = Decimal('0.00')
-        if sale.payment_method == 'mpesa':
-            mpesa += paid
-        elif sale.payment_method == 'on_account':
-            credit += total
-            gap = Decimal('0.00')
-        else:
-            cash += paid
-        credit += gap
+        if sale.status == 'completed':
+            collected += paid
+            gap = total - paid
+            if gap < 0:
+                gap = Decimal('0.00')
+            if sale.payment_method == 'mpesa':
+                mpesa += paid
+            elif sale.payment_method == 'on_account':
+                credit += total
+                gap = Decimal('0.00')
+            else:
+                cash += paid
+            credit += gap
         sale_rows.append({
             'id': sale.id,
             'sale_number': sale.sale_number,
@@ -313,6 +325,7 @@ def _serialize_ready(load, line_rows, sold, sales) -> dict:
             'amount_paid': f'{paid.quantize(Decimal("0.01")):.2f}',
             'payment_method': sale.payment_method,
             'customer_name': sale.customer.name if sale.customer_id and sale.customer else '',
+            'status': sale.status,
             'origin': 'field_load',
         })
     shortage = sum(
@@ -967,7 +980,8 @@ def sell_from_load(
         variant_id: Legacy variant, matching the load line.
         lines: 1–40 products. Each dict has ``product_id``, ``quantity``,
             and optional ``variant_id``. None keeps the single-product body.
-        payment_method: ``cash``, ``mpesa``, or ``credit``.
+        payment_method: ``cash``, ``mpesa``, ``credit``, ``debt``, or
+            ``on_account``.
         tender: Ignored. Kept so older clients can still send it.
         notes: Optional staff note, 0–500 characters. No phone numbers.
         client_channel: ``web`` or ``mobile``. Anything else is stored as ``web``.
@@ -981,9 +995,11 @@ def sell_from_load(
         ``bad_customer``, ``bad_note``.
 
     Side effects:
-        Creates one completed sale with ``entry_source='field_load'`` and one
-        ``FieldLoadSale``. Does not change shop stock. Posts customer debt
-        for any unpaid remainder of the whole sale.
+        Creates one sale with ``entry_source='field_load'`` and one
+        ``FieldLoadSale``. Field agents who cannot finalise sales leave the
+        sale on ``pending_approval`` for a manager. Managers complete at once.
+        Does not change shop stock. Customer debt and journals post only when
+        the sale is completed.
     """
     requests = _sale_requests(product_id, variant_id, quantity, lines)
     try:
@@ -1067,7 +1083,8 @@ def _resolve_tender(*, payment_method, paid: Decimal, total: Decimal, has_custom
     Map the screen's payment choice onto a stored sale tender.
 
     Args:
-        payment_method: ``cash``, ``mpesa``, or ``credit``.
+        payment_method: ``cash``, ``mpesa``, ``credit``, ``debt``, or
+            ``on_account``. Debt aliases record customer credit.
         paid: Amount the caller says was received, 2 dp, 0 through ``total``.
         total: Sale total, 2 dp, zero or more.
         has_customer: Whether a customer is attached.
@@ -1083,12 +1100,12 @@ def _resolve_tender(*, payment_method, paid: Decimal, total: Decimal, has_custom
     """
     method = (payment_method or 'cash').strip().lower()
     if method not in LOAD_PAYMENTS:
-        raise FieldLoadError('bad_money', 'Choose cash, M-Pesa, or credit.')
-    if method == 'credit':
+        raise FieldLoadError('bad_money', 'Choose cash, M-Pesa, or debt.')
+    if method in ('credit', 'debt', 'on_account'):
         if paid != 0:
-            raise FieldLoadError('bad_money', 'Credit records nothing received now.')
+            raise FieldLoadError('bad_money', 'Debt records nothing received now.')
         if not has_customer:
-            raise FieldLoadError('bad_customer', 'Choose a customer when the sale is not fully paid.')
+            raise FieldLoadError('bad_customer', 'Choose a customer for a debt sale.')
         return 'on_account', Decimal('0.00')
     if method == 'mpesa':
         if paid != total:
@@ -1161,20 +1178,28 @@ def _create_load_sale(
         total: Sum of the line subtotals, 2 dp, zero or more.
         paid: Amount received, 0 through ``total``.
         customer: Customer or None when fully paid.
-        user: Acting user stored on the sale as a fallback.
+        user: Acting user. Managers complete at once; others wait for approval.
         payment_method: Stored tender, one of cash, mpesa, on_account.
         notes: Optional note, already trimmed to 500 characters.
         client_channel: ``web`` or ``mobile``.
 
     Returns:
-        None. Side effects: one sale, one item per product, journal,
-        optional debt, and one load link.
+        None. Side effects: one sale, one item per product, one load link.
+        When the actor may finalise sales: journal and optional debt.
+        Otherwise the sale stays ``pending_approval`` for a manager.
 
     Raises:
         FieldLoadError: ``bad_product`` when sale creation fails.
     """
+    from types import SimpleNamespace
+
     from django.core.exceptions import ValidationError
     from products.stock_utils import sellable_unit_cost
+    from sales.sale_completion_approval import (
+        payment_payload_from_inputs,
+        queue_sale_complete,
+        sale_completion_should_wait,
+    )
     from sales.services import SaleService
 
     service = SaleService()
@@ -1189,6 +1214,7 @@ def _create_load_sale(
         }
         for row in items
     ]
+    actor = load.agent or user
     try:
         sale = service.create_sale(
             {
@@ -1203,7 +1229,7 @@ def _create_load_sale(
                 'notes': f'Field load #{load.pk}' if not notes else f'Field load #{load.pk}. {notes}',
             },
             [],
-            user=load.agent or user,
+            user=actor,
             branch=_default_sale_branch(),
             validated_items=validated,
             complete=False,
@@ -1211,6 +1237,25 @@ def _create_load_sale(
     except ValidationError as exc:
         text = '; '.join(getattr(exc, 'messages', []) or [str(exc)])
         raise FieldLoadError('bad_product', text[:300])
+    FieldLoadSale.objects.create(load=load, sale=sale)
+    wait = sale_completion_should_wait(user)
+    if wait:
+        queue_sale_complete(
+            SimpleNamespace(user=user, META={}, path='/api/agents/field-loads/sell/'),
+            sale,
+            payment_payload=payment_payload_from_inputs(
+                payment_method=payment_method,
+                amount_paid=paid,
+                allow_partial=paid < total,
+                excess_payment_choice='change',
+                use_wallet=False,
+                wallet_amount=Decimal('0'),
+                payment_reference='',
+                sale_type='pos',
+                client_channel=client_channel or '',
+            ),
+        )
+        return
     sale.status = 'completed'
     sale.save(update_fields=['status', 'updated_at'])
     try:
@@ -1222,7 +1267,7 @@ def _create_load_sale(
         service._apply_sale_payment(
             customer,
             sale,
-            load.agent or user,
+            actor,
             {
                 'wallet_amount_used': Decimal('0'),
                 'wallet_credit_added': Decimal('0'),
@@ -1234,7 +1279,6 @@ def _create_load_sale(
     else:
         from sales.customer_intelligence import on_sale_completed
         on_sale_completed(sale)
-    FieldLoadSale.objects.create(load=load, sale=sale)
 
 
 def submit_return(*, load_id: int, user, lines: list) -> FieldLoad:

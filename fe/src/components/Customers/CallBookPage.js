@@ -12,7 +12,10 @@ import {
   callCoveragePercent,
   callDayPlanCounts,
   callDayPlanTicker,
+  callerChangedLine,
+  callerNamesLine,
   customerCategoryLabel,
+  dayClaimBlockedLine,
   daySubCountyLabel,
   outcomeLabel,
   weekdayLabel,
@@ -115,6 +118,9 @@ export default function CallBookPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [infoRow, setInfoRow] = useState(null);
+  const [dayLogDate, setDayLogDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [dayLog, setDayLog] = useState(null);
+  const [dayLogLoading, setDayLogLoading] = useState(false);
   const debouncedSearch = useDebouncedValue(search, 350);
   const bootDay = useRef(true);
   const canEditPlan = isManagerOrAdminFromStorage();
@@ -146,9 +152,31 @@ export default function CallBookPage() {
     }
   }, [day, page, debouncedSearch]);
 
+  const loadDayLog = useCallback(async () => {
+    setDayLogLoading(true);
+    try {
+      const { data } = await customersAPI.callBookDayLog({
+        date: dayLogDate || undefined,
+        page: 1,
+        page_size: 200,
+      });
+      setDayLog(data);
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Could not load who called that day.');
+    } finally {
+      setDayLogLoading(false);
+    }
+  }, [dayLogDate]);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (view !== 'day-log') return undefined;
+    loadDayLog();
+    return undefined;
+  }, [view, loadDayLog]);
 
   useEffect(() => {
     if (!canEditPlan) return undefined;
@@ -212,12 +240,13 @@ export default function CallBookPage() {
       <PageHeader
         eyebrow="Customers"
         title="Call centre"
-        description="Copy the number and call on your phone. Then record what happened. The system does not place the call."
+        description="Copy the number and call on your phone. Opening a customer claims them for today so only you can call them. Shops missed last week come first."
       />
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Call centre">
         <FilterButton active={view === 'overview'} onClick={() => setView('overview')} label="Overview" />
         <FilterButton active={view === 'week'} onClick={() => setView('week')} label="Weekly schedule" />
         <FilterButton active={view === 'queue'} onClick={() => setView('queue')} label="Call queue" />
+        <FilterButton active={view === 'day-log'} onClick={() => setView('day-log')} label="Who called" />
       </div>
       {!loading && summary && (
         <DayPlanTicker
@@ -282,6 +311,15 @@ export default function CallBookPage() {
           onPrevious={() => setIndex((value) => Math.max(0, value - 1))}
           onSaved={() => load()}
           onView={setInfoRow}
+        />
+      )}
+      {view === 'day-log' && (
+        <DayCallLog
+          date={dayLogDate}
+          loading={dayLogLoading}
+          log={dayLog}
+          onDate={(next) => setDayLogDate(next)}
+          onRefresh={loadDayLog}
         />
       )}
       <CustomerInformationDialog
@@ -354,7 +392,7 @@ function Overview({ summary, onOpenQueue }) {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Scheduled this week" value={summary.callable} hint="Customers with a number" />
         <Stat label="Recorded" value={summary.called} hint={`${percent}% of the week`} tone="text-success" />
-        <Stat label="Call later" value={summary.follow_ups || 0} hint="Need another call" tone="text-warning" />
+        <Stat label="Missed last week" value={summary.missed_last_week || 0} hint="First priority this week" tone="text-warning" />
         <Stat label="Not yet called" value={summary.not_called} hint="Still on the list" tone="text-destructive" />
       </div>
       <div className="rounded-md border border-border p-3">
@@ -490,15 +528,27 @@ function WeekPlan({ summary, day, rows, page, pageCount, total, onDay, onPage, o
             >
               <span className="block font-medium">{row.name}</span>
               <span className="block text-xs text-muted-foreground">
-                {taken ? `${row.hold.held_by} has this customer` : 'View information'}
+                {taken
+                  ? dayClaimBlockedLine(row.hold)
+                  : row.missed_last_week && !row.called_this_week
+                    ? 'Missed last week · first priority'
+                    : 'View information'}
               </span>
+              {callerNamesLine(row.callers_this_week) && (
+                <span className="block text-xs text-muted-foreground">
+                  Called by {callerNamesLine(row.callers_this_week)}
+                </span>
+              )}
+              {row.caller_changed && (
+                <span className="block text-xs text-warning">{callerChangedLine(row)}</span>
+              )}
             </button>
             <Button
               type="button"
               size="sm"
               variant="outline"
               disabled={taken}
-              aria-label={taken ? `${row.hold.held_by} has ${row.name}` : `Open to record the call for ${row.name}`}
+              aria-label={taken ? dayClaimBlockedLine(row.hold) : `Open to record the call for ${row.name}`}
               onClick={() => onSelect(row.customer_id)}
             >
               {taken ? 'Blocked' : 'Call'}
@@ -690,12 +740,35 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
           </div>
         )}
       </dl>
+      {row.missed_last_week && !row.called_this_week && (
+        <p className="mt-3 text-sm font-medium text-warning" data-testid="missed-last-week">
+          Not called last week — first priority this week.
+        </p>
+      )}
+      {callerNamesLine(row.callers_last_week) && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          Last week: {callerNamesLine(row.callers_last_week)}
+        </p>
+      )}
+      {callerNamesLine(row.callers_this_week) && (
+        <p className="mt-1 text-sm text-muted-foreground">
+          This week: {callerNamesLine(row.callers_this_week)}
+        </p>
+      )}
+      {row.caller_changed && (
+        <p className="mt-1 text-sm text-warning">{callerChangedLine(row)}</p>
+      )}
       {row.previous_summary && !row.called_this_week && (
         <p className="mt-3 text-sm">Last note: {row.previous_summary}</p>
       )}
       {takenBySomeoneElse(row) && (
-        <p className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm">
-          {row.hold.held_by} has this customer.
+        <p className="mt-3 rounded-md border border-border bg-muted px-3 py-2 text-sm" data-testid="day-claim-blocked">
+          {dayClaimBlockedLine(row.hold)}
+        </p>
+      )}
+      {row.hold?.held_by_me && (
+        <p className="mt-3 text-sm text-muted-foreground">
+          You claimed this customer for today. Nobody else can call them until tomorrow.
         </p>
       )}
       {!takenBySomeoneElse(row) && (
@@ -778,7 +851,70 @@ function CustomerCard({ row, dayLabel, markingOpen, canGoBack, onPrevious, onSav
 }
 
 /**
- * Toggle for the three call-centre views.
+ * Who called on a chosen Nairobi calendar day.
+ *
+ * @param {string} props.date YYYY-MM-DD value for the date input.
+ * @param {boolean} props.loading Whether the log is loading.
+ * @param {object|null} props.log Day-log API payload.
+ * @param {Function} props.onDate Sets the date string.
+ * @param {Function} props.onRefresh Reloads the log.
+ */
+function DayCallLog({ date, loading, log, onDate, onRefresh }) {
+  const results = log?.results || [];
+  const callers = log?.callers || [];
+  return (
+    <section className="space-y-3 rounded-md border border-border p-3" data-testid="call-day-log">
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-sm">
+          <span className="mb-1 block text-muted-foreground">Day</span>
+          <Input
+            type="date"
+            value={date}
+            onChange={(event) => onDate(event.target.value)}
+            aria-label="Day to review who called"
+            data-testid="call-day-log-date"
+          />
+        </label>
+        <Button type="button" variant="outline" onClick={onRefresh} disabled={loading}>
+          {loading ? 'Loading…' : 'Refresh'}
+        </Button>
+      </div>
+      {callers.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          Callers that day: {callers.join(', ')}
+        </p>
+      )}
+      {loading && <p className="text-sm text-muted-foreground">Loading who called…</p>}
+      {!loading && results.length === 0 && (
+        <p className="text-sm text-muted-foreground">No calls recorded on this day.</p>
+      )}
+      <ul className="space-y-2">
+        {results.map((row) => (
+          <li
+            key={`${row.customer_id}-${row.called_at}-${row.called_by}`}
+            className="border-b border-border py-2"
+          >
+            <span className="block font-medium">{row.name}</span>
+            <span className="block text-sm text-muted-foreground">
+              {row.called_by} · {outcomeLabel(row.outcome) || row.outcome}
+              {row.called_at ? ` · ${new Date(row.called_at).toLocaleTimeString('en-GB', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Africa/Nairobi',
+              })}` : ''}
+            </span>
+            {row.request_summary && (
+              <span className="mt-1 block text-sm">{row.request_summary}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * Toggle for the call-centre views.
  *
  * @param {boolean} props.active Whether this view is open.
  * @param {Function} props.onClick Selects the view.

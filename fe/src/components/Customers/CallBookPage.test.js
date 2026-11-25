@@ -11,6 +11,7 @@ jest.mock('../../services/api', () => ({
     holdCall: jest.fn(),
     callBookPlan: jest.fn(),
     saveCallBookPlan: jest.fn(),
+    callBookDayLog: jest.fn(),
   },
 }));
 
@@ -36,6 +37,7 @@ const book = {
     not_called: 1,
     cannot_call: 1,
     follow_ups: 0,
+    missed_last_week: 1,
     today_callable: 2,
     today_not_called: 1,
     days: [
@@ -62,6 +64,10 @@ const book = {
       previous_summary: 'Ask about zippers next week',
       previous_outcome: 'ask_later',
       follow_up_on: '',
+      missed_last_week: true,
+      callers_this_week: [],
+      callers_last_week: [],
+      caller_changed: false,
       hold: null,
     },
     {
@@ -78,6 +84,10 @@ const book = {
       request_summary: 'Wants webbing',
       previous_summary: '',
       follow_up_on: '',
+      missed_last_week: false,
+      callers_this_week: [{ called_by: 'Ada', called_by_id: 9, outcome: 'called', called_at: '' }],
+      callers_last_week: [{ called_by: 'Ben', called_by_id: 8, outcome: 'called', called_at: '' }],
+      caller_changed: true,
       hold: null,
     },
   ],
@@ -87,7 +97,22 @@ describe('CallBookPage', () => {
   beforeEach(() => {
     customersAPI.callBook.mockResolvedValue({ data: book });
     customersAPI.markCall.mockResolvedValue({ data: { called_this_week: true } });
-    customersAPI.holdCall.mockResolvedValue({ data: { hold_minutes: 5 } });
+    customersAPI.holdCall.mockResolvedValue({ data: { day_claim: true, hold_minutes: 480 } });
+    customersAPI.callBookDayLog.mockResolvedValue({
+      data: {
+        day: '2026-11-16',
+        count: 1,
+        callers: ['Ada'],
+        results: [{
+          customer_id: 2,
+          name: 'Called Shop',
+          called_by: 'Ada',
+          outcome: 'called',
+          request_summary: 'Wants webbing',
+          called_at: '2026-11-16T10:00:00+03:00',
+        }],
+      },
+    });
     Object.assign(navigator, {
       clipboard: { writeText: jest.fn().mockResolvedValue(undefined) },
     });
@@ -283,9 +308,27 @@ describe('CallBookPage', () => {
     await waitFor(() => expect(customersAPI.holdCall).toHaveBeenCalledWith(3));
     expect(customersAPI.holdCall).not.toHaveBeenCalledWith(1);
     await userEvent.click(screen.getByRole('tab', { name: 'Weekly schedule' }));
-    const blocked = screen.getByRole('button', { name: 'Mercy has Not Called Shop' });
+    const blocked = screen.getByRole('button', {
+      name: 'Mercy claimed this customer for today. Only one person can call them today.',
+    });
     expect(blocked).toBeDisabled();
-    expect(screen.getByText('Mercy has this customer')).toBeInTheDocument();
+    expect(screen.getByText(/Mercy claimed this customer for today/)).toBeInTheDocument();
+  });
+
+  test('who called tab loads the day log without phones', async () => {
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    await userEvent.click(screen.getByRole('tab', { name: 'Who called' }));
+    expect(await screen.findByTestId('call-day-log')).toBeInTheDocument();
+    await waitFor(() => expect(customersAPI.callBookDayLog).toHaveBeenCalled());
+    expect(screen.getByText('Called Shop')).toBeInTheDocument();
+    expect(screen.getByText(/Callers that day: Ada/)).toBeInTheDocument();
+    expect(screen.queryByText('0718000002')).not.toBeInTheDocument();
+  });
+
+  test('queue shows missed-last-week priority on the open customer', async () => {
+    render(<CallBookPage />);
+    expect(await screen.findByTestId('missed-last-week')).toHaveTextContent(/Not called last week/);
   });
 
   test('clicking a customer shows their general information', async () => {
