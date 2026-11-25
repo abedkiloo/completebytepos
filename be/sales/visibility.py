@@ -57,9 +57,12 @@ def user_sees_all_sales(user) -> bool:
     """
     Store-wide sales (today / week / month / history totals).
 
-    Default: Super Admin / Admin / Manager.
-    Sales staff see only their own sales (cashier or served_by).
-    Admins can grant ``sales.view_all`` on any role for store-wide visibility.
+    Sales people see only their own sales (cashier or served_by) unless their
+    role has the ``sales.view_all`` permission ("View other staff sales").
+
+    Super Admin / Admin / Manager still see store-wide by role name. Any other
+    role (including Sales Personnel) needs an explicit ``sales.view_all`` grant
+    in Roles → Sales → View others' records.
     """
     if user is None or not getattr(user, 'is_authenticated', False):
         return False

@@ -92,6 +92,9 @@ describe('Sales history export', () => {
     await waitFor(() => expect(screen.getByText('S-100')).toBeInTheDocument());
     expect(screen.queryByText('Sold by')).not.toBeInTheDocument();
     expect(salesAPI.sellers).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Your sales only/i)
+    ).toBeInTheDocument();
   });
 
   it('lets admins and managers filter history by seller', async () => {

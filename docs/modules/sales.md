@@ -24,6 +24,9 @@ POS/billing domain: customers (duka identity, wallet/debt), holdings → approva
 
 ## Bounds & invariants
 
+- Sales staff see **only their own** sales (`cashier` / `served_by`) unless
+  Roles grants **`sales.view_all`** (“View other staff sales”). Managers /
+  admins see store-wide by role.
 - Negative wallet = debt; unpaid sale posts `source_type='debt'`.
 - Return-for-correction reverses wallet **and** invalidates old debt rows.
 - Returned sales must be edited before resubmit.

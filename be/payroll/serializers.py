@@ -21,6 +21,8 @@ class PayrollSettingsSerializer(serializers.ModelSerializer):
             'tenant',
             'currency',
             'pay_day',
+            'prorate_mid_join',
+            'min_month_days',
             'statutory_enabled',
             'include_appraisal_bonus',
             'include_sales_commission',
@@ -30,6 +32,28 @@ class PayrollSettingsSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_min_month_days(self, value):
+        """
+        Enforce at-least-four-weeks month floor (28–31 days).
+
+        Args:
+            value: Proposed min_month_days (int).
+
+        Returns:
+            Validated int in 28–31.
+
+        Raises:
+            serializers.ValidationError: Outside 28–31.
+        """
+        if value is None:
+            return 28
+        n = int(value)
+        if n < 28 or n > 31:
+            raise serializers.ValidationError(
+                'A pay month must be at least 4 weeks (28 days) and at most 31.'
+            )
+        return n
 
     def validate_sales_commission_template(self, value):
         """

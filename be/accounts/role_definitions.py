@@ -79,7 +79,11 @@ PERMISSIONS_DATA = [
     ('sales', 'approve', 'Approve and complete sales submitted by cashiers'),
     ('sales', 'export', 'Export sales'),
     ('sales', 'daily_sales', 'View daily sales tracker (paid vs debt by day)'),
-    ('sales', 'view_all', 'View all staff sales (store-wide today / week / month)'),
+    (
+        'sales',
+        'view_all',
+        'View other staff sales (not only your own — history, daily, dashboard)',
+    ),
     (
         'sales',
         'period_totals',
@@ -305,10 +309,19 @@ ROLE_SCREEN_MATRIX = {
 
 
 def ensure_permissions():
-    """Create missing Permission rows; return count created."""
+    """
+    Create missing Permission rows and refresh catalog descriptions.
+
+    Args:
+        None.
+
+    Returns:
+        int: Count of newly created permission rows (0–len(PERMISSIONS_DATA)).
+        Existing rows may have ``description`` updated in place (not counted).
+    """
     created = 0
     for module, action, description in PERMISSIONS_DATA:
-        _, was_created = Permission.objects.get_or_create(
+        obj, was_created = Permission.objects.get_or_create(
             module=module,
             action=action,
             defaults={
@@ -318,6 +331,9 @@ def ensure_permissions():
         )
         if was_created:
             created += 1
+        elif (obj.description or '') != description:
+            obj.description = description
+            obj.save(update_fields=['description'])
     return created
 
 

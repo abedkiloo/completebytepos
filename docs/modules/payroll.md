@@ -8,7 +8,7 @@ Monthly payroll: pay component catalog, role packages, per-employee overrides, r
 
 | Model | Role |
 |-------|------|
-| `PayrollSettings` | Currency, pay day (1–28), statutory/bonus toggles, letterhead |
+| `PayrollSettings` | Currency, pay day (1–28), mid-join proration (month ≥ 28 days), statutory/bonus toggles, letterhead |
 | `PayComponent` | Earning/deduction/employer definitions |
 | `RolePayPackage` / lines | Default package for an accounts `Role` |
 | `EmployeePayAssignment` | Dated personal overrides |
@@ -24,6 +24,7 @@ Prefix: `/api/payroll/` — settings, components, packages, assignments, runs, p
 - One run per tenant/year/month.
 - Status: `draft` → `calculated` → `pending_approval` → `locked` (or `cancelled`); locked is immutable.
 - Money is `Decimal` (never float). Pay day ∈ [1, 28].
+- Mid-join proration (feature `mid_join_proration` + `prorate_mid_join`): basic × days_worked / max(calendar_days, `min_month_days`), with `min_month_days` ∈ [28, 31] (at least 4 weeks). Join at midpoint ≈ half salary. Hired after `period_end` → no payslip.
 - Self-service needs employee linked to user email (`employee_for_user`).
 - Estimate pay does **not** include run-only adapters (full statutory/loan) — locked payslips do.
 

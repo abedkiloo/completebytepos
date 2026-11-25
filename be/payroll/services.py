@@ -26,6 +26,7 @@ from payroll.models import (
     PayslipLine,
     RolePayPackage,
 )
+from payroll.proration import apply_basic_proration, days_worked_in_period
 from payroll.starters import seed_starter_components
 from utils.audit import log_audit
 
@@ -456,6 +457,28 @@ def _resolve_basic(emp, *, assignments, package) -> tuple:
     return ZERO, 'none'
 
 
+def _mid_join_proration_enabled(settings) -> bool:
+    """
+    Whether mid-join basic proration applies (module feature + tenant setting).
+
+    Args:
+        settings: ``PayrollSettings`` instance.
+
+    Returns:
+        True when both the ``mid_join_proration`` feature and
+        ``settings.prorate_mid_join`` are on.
+    """
+    if not getattr(settings, 'prorate_mid_join', True):
+        return False
+    try:
+        from settings.module_features import is_module_feature_enabled
+
+        return bool(is_module_feature_enabled('payroll', 'mid_join_proration'))
+    except Exception:
+        # Feature registry unavailable → do not silently change pay math.
+        return False
+
+
 def _calculate_employee(emp, *, run, settings, components) -> dict | None:
     """
     Role pay package (defaults) + per-employee Staff pay (overrides).
@@ -463,18 +486,44 @@ def _calculate_employee(emp, *, run, settings, components) -> dict | None:
     - Package comes from the linked user's job role.
     - Employee assignments win for the same component.
     - ``Employee.salary`` / BASIC assignment / package default set basic.
+    - Mid-join hire dates prorate basic (month ≥ 4 weeks / 28 days) when enabled.
     """
+    hire_date = getattr(emp, 'hire_date', None)
+    if hire_date and hire_date > run.period_end:
+        return None
+    if _mid_join_proration_enabled(settings):
+        worked = days_worked_in_period(
+            hire_date=hire_date,
+            period_start=run.period_start,
+            period_end=run.period_end,
+        )
+        if worked <= 0:
+            return None
+
     package = _package_for_employee(emp)
     assignments = list(_active_assignments(emp, run.period_end))
     basic, basic_source = _resolve_basic(
         emp, assignments=assignments, package=package
+    )
+    min_days = int(getattr(settings, 'min_month_days', 28) or 28)
+    basic, proration_meta = apply_basic_proration(
+        basic,
+        hire_date=hire_date,
+        period_start=run.period_start,
+        period_end=run.period_end,
+        min_month_days=min_days,
+        enabled=_mid_join_proration_enabled(settings),
     )
     merged_rows, package_meta = _merged_pay_lines(
         emp, period_end=run.period_end, settings=settings, components=components
     )
 
     rows: list[dict] = []
-    meta: dict = {'adapters': {}, **package_meta}
+    meta: dict = {
+        'adapters': {},
+        'proration': proration_meta,
+        **package_meta,
+    }
 
     basic_comp = components.get('BASIC')
     if basic_comp:
@@ -483,7 +532,10 @@ def _calculate_employee(emp, *, run, settings, components) -> dict | None:
                 'component': basic_comp,
                 'amount': basic,
                 'include_zero': True,
-                'meta': {'source': basic_source},
+                'meta': {
+                    'source': basic_source,
+                    'proration': proration_meta,
+                },
             }
         )
 

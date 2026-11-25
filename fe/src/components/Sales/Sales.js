@@ -444,7 +444,11 @@ const Sales = () => {
     <PageShell>
         <PageHeader
           title="Sales history"
-          description="Open a sale for the receipt. Void and roll back are on that sale."
+          description={
+            canFilterBySeller
+              ? 'Store-wide sales. Open a sale for the receipt; filter by seller when needed.'
+              : 'Your sales only. Open a sale for the receipt. Ask an admin to grant “View other staff sales” to see everyone.'
+          }
         >
           {isModuleFeatureEnabled('sales', 'history_export', true) ? (
             <ReportExportButtons slug="sales-history" params={exportParams} />

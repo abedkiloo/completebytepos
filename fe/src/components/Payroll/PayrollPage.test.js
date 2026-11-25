@@ -58,6 +58,8 @@ describe('PayrollPage', () => {
       data: {
         currency: 'KES',
         pay_day: 28,
+        prorate_mid_join: true,
+        min_month_days: 28,
         statutory_enabled: false,
         include_appraisal_bonus: true,
         include_sales_commission: true,

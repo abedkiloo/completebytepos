@@ -162,6 +162,12 @@ class DefaultRolePermissionTests(TestCase):
         self.assertTrue(self._has(self.sales_role, 'products', 'import'))
         self.assertFalse(self._has(self.sales_role, 'products', 'delete'))
 
+    def test_sales_role_lacks_view_all_other_staff_sales(self):
+        """Module/default pack: salespeople need an explicit sales.view_all grant."""
+        self.assertTrue(self._has(self.sales_role, 'sales', 'view'))
+        self.assertFalse(self._has(self.sales_role, 'sales', 'view_all'))
+        self.assertFalse(self._has(self.field_role, 'sales', 'view_all'))
+
     def test_manager_has_delivery_history(self):
         self.assertTrue(self._has(self.manager_role, 'delivery', 'history'))
         self.assertTrue(self._has(self.super_role, 'delivery', 'history'))

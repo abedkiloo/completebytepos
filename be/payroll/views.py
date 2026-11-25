@@ -74,6 +74,8 @@ class PayrollSettingsView(APIView):
         before = {
             'currency': settings.currency,
             'pay_day': settings.pay_day,
+            'prorate_mid_join': settings.prorate_mid_join,
+            'min_month_days': settings.min_month_days,
             'statutory_enabled': settings.statutory_enabled,
             'include_appraisal_bonus': settings.include_appraisal_bonus,
             'include_sales_commission': settings.include_sales_commission,
@@ -87,6 +89,8 @@ class PayrollSettingsView(APIView):
         after = {
             'currency': settings.currency,
             'pay_day': settings.pay_day,
+            'prorate_mid_join': settings.prorate_mid_join,
+            'min_month_days': settings.min_month_days,
             'statutory_enabled': settings.statutory_enabled,
             'include_appraisal_bonus': settings.include_appraisal_bonus,
             'include_sales_commission': settings.include_sales_commission,

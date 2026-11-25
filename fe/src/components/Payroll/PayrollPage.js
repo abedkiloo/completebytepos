@@ -1006,6 +1006,35 @@ export default function PayrollPage() {
               onChange={(e) => setSettings({ ...settings, pay_day: e.target.value })}
             />
           </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={Boolean(settings.prorate_mid_join ?? true)}
+              onChange={(e) =>
+                setSettings({ ...settings, prorate_mid_join: e.target.checked })
+              }
+              data-testid="prorate-mid-join"
+            />
+            Prorate salary when an employee joins mid-month
+          </label>
+          <p className="text-xs text-muted-foreground -mt-2">
+            Join halfway → about half of basic. A pay month counts as at least 4
+            weeks (28 days). Requires the Mid-join salary proration module feature.
+          </p>
+          <div>
+            <Label htmlFor="min_month_days">Minimum month days (28–31)</Label>
+            <Input
+              id="min_month_days"
+              type="number"
+              min={28}
+              max={31}
+              value={settings.min_month_days ?? 28}
+              onChange={(e) =>
+                setSettings({ ...settings, min_month_days: e.target.value })
+              }
+              disabled={settings.prorate_mid_join === false}
+            />
+          </div>
           <div>
             <Label htmlFor="letterhead">Payslip letterhead line</Label>
             <Input

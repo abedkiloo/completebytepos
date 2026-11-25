@@ -402,10 +402,13 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
                                   {mod.permissions.map((perm) => (
                                     <label
                                       key={perm.id}
-                                      className="permission-item flex items-center gap-2 text-sm"
+                                      className="permission-item flex items-start gap-2 text-sm"
+                                      title={perm.description || perm.name || ''}
+                                      data-testid={`perm-${perm.module}-${perm.action}`}
                                     >
                                       <input
                                         type="checkbox"
+                                        className="mt-0.5"
                                         checked={formData.permission_ids.includes(
                                           perm.id
                                         )}
@@ -413,8 +416,10 @@ const RoleForm = ({ role, permissions, permissionCatalog, showPermissionCatalog 
                                           handlePermissionToggle(perm.id)
                                         }
                                       />
-                                      <span>
-                                        {perm.action_display || perm.action}
+                                      <span className="leading-snug">
+                                        {perm.description ||
+                                          perm.action_display ||
+                                          perm.action}
                                       </span>
                                     </label>
                                   ))}

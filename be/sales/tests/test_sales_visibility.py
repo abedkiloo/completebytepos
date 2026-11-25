@@ -180,3 +180,70 @@ class SalesVisibilityTest(TestCase):
                 module='sales', action='view_all',
             ).exists()
         )
+
+    def test_sales_role_pack_excludes_view_all(self):
+        """Corrected: Sales Personnel only see own sales unless granted view_all."""
+        sales_role = Role.objects.get(name=ROLE_SALES)
+        self.assertFalse(
+            sales_role.permissions.filter(
+                module='sales', action='view_all',
+            ).exists()
+        )
+        self.assertTrue(
+            sales_role.permissions.filter(module='sales', action='view').exists()
+        )
+
+    def test_sales_agent_cannot_retrieve_other_staff_sale(self):
+        """Security / IDOR: detail is scoped the same as the list."""
+        factory = APIRequestFactory()
+        request = factory.get(f'/api/sales/{self.sale_b.id}/')
+        force_authenticate(request, user=self.sales_a)
+        response = SaleViewSet.as_view({'get': 'retrieve'})(request, pk=self.sale_b.id)
+        self.assertEqual(response.status_code, 404)
+
+    def test_sales_agent_with_view_all_retrieves_other_staff_sale(self):
+        perm = Permission.objects.get(module='sales', action='view_all')
+        role = Role.objects.get(name=ROLE_SALES)
+        role.permissions.add(perm)
+        for cached in (role, getattr(self.sales_a.profile, 'custom_role', None)):
+            if cached is not None and hasattr(cached, '_permission_pairs_cache'):
+                delattr(cached, '_permission_pairs_cache')
+        factory = APIRequestFactory()
+        request = factory.get(f'/api/sales/{self.sale_b.id}/')
+        force_authenticate(request, user=self.sales_a)
+        response = SaleViewSet.as_view({'get': 'retrieve'})(request, pk=self.sale_b.id)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['id'], self.sale_b.id)
+        role.permissions.remove(perm)
+        for cached in (role, getattr(self.sales_a.profile, 'custom_role', None)):
+            if cached is not None and hasattr(cached, '_permission_pairs_cache'):
+                delattr(cached, '_permission_pairs_cache')
+
+    def test_build_queryset_stress_many_other_sellers_hidden(self):
+        others = []
+        for i in range(40):
+            u = User.objects.create_user(f'vis_bulk_{i}', password='x')
+            UserProfile.objects.create(
+                user=u,
+                role='cashier',
+                custom_role=Role.objects.get(name=ROLE_SALES),
+                is_active=True,
+            )
+            others.append(
+                Sale.objects.create(
+                    cashier=u,
+                    subtotal=Decimal('10.00'),
+                    total=Decimal('10.00'),
+                    amount_paid=Decimal('10.00'),
+                    status='completed',
+                    payment_method='cash',
+                )
+            )
+        factory = RequestFactory()
+        req = factory.get('/api/sales/')
+        req.user = self.sales_a
+        qs = SaleService().build_queryset({}, request=req)
+        ids = set(qs.values_list('id', flat=True))
+        self.assertIn(self.sale_a.id, ids)
+        for sale in others:
+            self.assertNotIn(sale.id, ids)

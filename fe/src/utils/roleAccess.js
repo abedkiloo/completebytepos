@@ -192,7 +192,8 @@ export function userCanViewPeriodTotalsFromStorage() {
 
 /**
  * Store-wide sales totals (today / week / month / daily tracker for all sellers).
- * Default: Super Admin / Admin / Manager. Grant sales.view_all to open it for others.
+ * Default: Super Admin / Admin / Manager. Sales see only their own sales unless
+ * Roles grants sales.view_all (“View other staff sales”).
  */
 export function userSeesAllSalesFromStorage() {
   const { permissions, user, profile } = getStoredAuth();

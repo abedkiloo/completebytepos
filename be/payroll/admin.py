@@ -20,6 +20,8 @@ class PayrollSettingsAdmin(admin.ModelAdmin):
         'tenant',
         'currency',
         'pay_day',
+        'prorate_mid_join',
+        'min_month_days',
         'statutory_enabled',
         'include_appraisal_bonus',
         'include_sales_commission',

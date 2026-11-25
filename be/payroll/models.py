@@ -23,6 +23,20 @@ class PayrollSettings(models.Model):
         default=28,
         help_text='Day of month payroll typically runs (1–28)',
     )
+    prorate_mid_join = models.BooleanField(
+        default=True,
+        help_text=(
+            'When on, employees hired mid-period receive proportional basic '
+            '(join halfway ≈ half salary). Requires the mid_join_proration module feature.'
+        ),
+    )
+    min_month_days = models.PositiveSmallIntegerField(
+        default=28,
+        help_text=(
+            'Minimum days treated as a full pay month (at least 4 weeks = 28). '
+            'Proration uses max(calendar days in period, this value). Range 28–31.'
+        ),
+    )
     statutory_enabled = models.BooleanField(
         default=False,
         help_text='When off, statutory deduction rules stay dormant (no calculation)',

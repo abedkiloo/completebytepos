@@ -53,7 +53,7 @@ class Permission(models.Model):
         ('manage', 'Manage'),  # Full management access
         ('payments_trail', 'Payments trail'),
         ('daily_sales', 'Daily sales'),
-        ('view_all', 'View all'),
+        ('view_all', "View others' records"),
         ('view_own', 'View own'),
         ('refund', 'Void / refund'),
         ('rollback', 'Roll back'),

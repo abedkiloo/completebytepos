@@ -515,6 +515,13 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
                 7,
                 enabled=False,
             ),
+            _f(
+                'mid_join_proration',
+                'Mid-join salary proration',
+                'Prorate basic when an employee joins mid-month '
+                '(month counts as at least 4 weeks / 28 days).',
+                8,
+            ),
         ],
     },
     # --- Platform ---
