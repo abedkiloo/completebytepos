@@ -12,6 +12,7 @@ import {
 
 import { cn } from '../../lib/cn';
 import { appraisalTone, kes, MONTH_NAMES, starGlyphs } from '../../utils/appraisalStars';
+import { CHART_SERIES } from '../../utils/chartTheme';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import AppraisalDailyTips from './AppraisalDailyTips';
 import AppraisalProgressBar from './AppraisalProgressBar';
@@ -395,8 +396,8 @@ function TrendChart({ days, target }) {
             <XAxis dataKey="date" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} />
             <Tooltip formatter={(value) => kes(value)} />
-            <Line type="monotone" dataKey="sales" stroke="#059669" strokeWidth={2} dot={false} name="Sales" />
-            <Line type="monotone" dataKey="target" stroke="#d97706" strokeWidth={2} strokeDasharray="4 4" dot={false} name="Target" />
+            <Line type="monotone" dataKey="sales" stroke={CHART_SERIES[0]} strokeWidth={2} dot={false} name="Sales" />
+            <Line type="monotone" dataKey="target" stroke={CHART_SERIES[1]} strokeWidth={2} strokeDasharray="4 4" dot={false} name="Target" />
           </LineChart>
         </ResponsiveContainer>
       </CardContent>

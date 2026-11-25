@@ -123,9 +123,22 @@ describe('ProductDetailPanel performance tab', () => {
     reportsAPI.productTrends.mockResolvedValue({
       data: {
         product_id: 7,
+        grain: 'month',
         months_requested: 12,
+        periods: [
+          {
+            period: '2026-11',
+            month: '2026-11',
+            label: 'Nov 2026',
+            quantity_sold: 3,
+            revenue: '90.00',
+            order_count: 1,
+            quantity_received: 5,
+          },
+        ],
         months: [
           {
+            period: '2026-11',
             month: '2026-11',
             label: 'Nov 2026',
             quantity_sold: 3,
@@ -135,10 +148,15 @@ describe('ProductDetailPanel performance tab', () => {
           },
         ],
         channels: [],
+        variants: [],
+        variant_keys: [],
+        variant_series: [],
         summary: {
           quantity_sold: 3,
           revenue: '90.00',
+          avg_period_quantity: 3,
           avg_monthly_quantity: 3,
+          best_period_label: 'Nov 2026',
           best_month_label: 'Nov 2026',
         },
       },
@@ -162,7 +180,9 @@ describe('ProductDetailPanel performance tab', () => {
     );
     expect(reportsAPI.productTrends).toHaveBeenCalledWith({
       product_id: 7,
+      grain: 'month',
       months: 12,
+      include_variants: '1',
     });
   });
 

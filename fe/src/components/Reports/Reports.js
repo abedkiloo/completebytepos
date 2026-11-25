@@ -18,6 +18,7 @@ import {
   reportsShowCostAndProfit,
 } from '../../utils/reportDisplay';
 import { formatCurrency, formatNumber, formatDateTime, formatCompactCurrency } from '../../utils/formatters';
+import { CHART_SERIES, CHART_STATUS } from '../../utils/chartTheme';
 import ReportsList from './ReportsList';
 import ReportsHub from './ReportsHub';
 import SalesPersonReportView from './SalesPersonReportView';
@@ -38,9 +39,10 @@ import ReportExportButtons from './ReportExportButtons';
 
 const TOP_PRODUCT_LIMITS = [5, 10, 15, 20, 25, 50];
 const DEFAULT_TOP_PRODUCTS = 10;
+
 const PRODUCT_CHART_COLOURS = {
-  quantity: '#10b981',
-  revenue: '#2563eb',
+  quantity: CHART_SERIES[1],
+  revenue: CHART_SERIES[0],
 };
 
 const Reports = () => {
@@ -906,7 +908,15 @@ const Reports = () => {
           {showCostProfit ? (
           <div className={R.summaryCard}>
             <h3>Net Profit</h3>
-            <p className={R.summaryValue} style={{ color: (summary?.net_profit || 0) >= 0 ? '#10b981' : '#ef4444' }}>
+            <p
+              className={R.summaryValue}
+              style={{
+                color:
+                  (summary?.net_profit || 0) >= 0
+                    ? CHART_STATUS.success
+                    : CHART_STATUS.destructive,
+              }}
+            >
               {formatCurrency(summary?.net_profit || 0)}
             </p>
           </div>
@@ -939,7 +949,14 @@ const Reports = () => {
                       <td>{formatCurrency(item.revenue)}</td>
                       <td>{formatCurrency(item.expenses)}</td>
                       {showCostProfit ? (
-                      <td style={{ color: item.profit >= 0 ? '#10b981' : '#ef4444' }}>
+                      <td
+                        style={{
+                          color:
+                            item.profit >= 0
+                              ? CHART_STATUS.success
+                              : CHART_STATUS.destructive,
+                        }}
+                      >
                         {formatCurrency(item.profit)}
                       </td>
                       ) : null}
@@ -969,7 +986,15 @@ const Reports = () => {
           </div>
           <div className={R.summaryCard}>
             <h3>Net Profit</h3>
-            <p className={R.summaryValue} style={{ color: (summary?.net_profit || 0) >= 0 ? '#10b981' : '#ef4444' }}>
+            <p
+              className={R.summaryValue}
+              style={{
+                color:
+                  (summary?.net_profit || 0) >= 0
+                    ? CHART_STATUS.success
+                    : CHART_STATUS.destructive,
+              }}
+            >
               {formatCurrency(summary?.net_profit || 0)}
             </p>
           </div>
@@ -998,7 +1023,14 @@ const Reports = () => {
                       <td>{item.month}</td>
                       <td>{formatCurrency(item.sales)}</td>
                       <td>{formatCurrency(item.expenses)}</td>
-                      <td style={{ color: item.profit >= 0 ? '#10b981' : '#ef4444' }}>
+                      <td
+                        style={{
+                          color:
+                            item.profit >= 0
+                              ? CHART_STATUS.success
+                              : CHART_STATUS.destructive,
+                        }}
+                      >
                         {formatCurrency(item.profit)}
                       </td>
                     </tr>

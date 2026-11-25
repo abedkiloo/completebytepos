@@ -922,16 +922,19 @@ class ReportViewSet(viewsets.ViewSet):
     @gated_report_action('product_trends')
     def product_trends(self, request):
         """
-        Month-over-month sales and receiving for one product.
+        Month or quarter sales and receiving for one product.
 
         Query params:
             product_id: required positive product id.
-            months: 1–24 calendar months (default 12).
-            variant_id: optional positive variant id.
+            grain: ``month`` (default) or ``quarter``.
+            months: 1–24 calendar months when grain is month (default 12).
+            quarters: 1–8 calendar quarters when grain is quarter (default 4).
+            variant_id: optional positive variant id (single-variant focus).
+            include_variants: ``0``/``false`` to skip variant compare payload.
 
         Returns:
-            Response: monthly series, channel mix, and summary. 400 when
-            product_id is missing or invalid.
+            Response: period series, optional variant compare, channel mix,
+            and summary. 400 when product_id is missing or invalid.
         """
         from products.models import Product
         from reports.product_trends import build_product_trends
@@ -959,15 +962,27 @@ class ReportViewSet(viewsets.ViewSet):
                     {'error': 'Variant must be a positive number.'},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+        grain = (request.query_params.get('grain') or 'month').strip().lower()
         try:
             months = int(request.query_params.get('months') or 12)
         except (TypeError, ValueError):
             months = 12
+        quarters = None
+        if request.query_params.get('quarters') not in (None, ''):
+            try:
+                quarters = int(request.query_params.get('quarters'))
+            except (TypeError, ValueError):
+                quarters = 4
+        include_raw = (request.query_params.get('include_variants') or '1').strip().lower()
+        include_variants = include_raw not in ('0', 'false', 'no', 'off')
         try:
             payload = build_product_trends(
                 product_id=product_id,
                 months=months,
+                quarters=quarters,
+                grain=grain,
                 variant_id=variant_id,
+                include_variants=include_variants,
             )
         except ValueError as exc:
             return Response({'error': str(exc)[:200]}, status=status.HTTP_400_BAD_REQUEST)

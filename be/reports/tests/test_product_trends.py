@@ -11,7 +11,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from inventory.models import StockMovement
-from products.models import Category, Product
+from products.models import Category, Color, Product, ProductVariant, Size
 from reports.product_trends import (
     build_product_trends,
     product_trends_allowed,
@@ -136,6 +136,141 @@ class ProductTrendsUnitTests(ManagerAPITestCase):
         self.assertTrue(
             any(ch['channel'] == 'pos' and ch['quantity'] == 2 for ch in payload['channels'])
         )
+        self.assertEqual(payload['grain'], 'month')
+        self.assertEqual(len(payload['periods']), 3)
+
+    def test_build_quarter_grain(self):
+        sale = Sale.objects.create(
+            status='completed',
+            payment_method='cash',
+            subtotal=Decimal('100.00'),
+            tax_amount=Decimal('0'),
+            discount_amount=Decimal('0'),
+            total=Decimal('100.00'),
+            amount_paid=Decimal('100.00'),
+            cashier=self.manager_user,
+            occurred_at=timezone.make_aware(datetime(2026, 2, 10, 12, 0, 0)),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=self.product,
+            quantity=1,
+            unit_price=Decimal('100.00'),
+            subtotal=Decimal('100.00'),
+        )
+        payload = build_product_trends(
+            product_id=self.product.id,
+            grain='quarter',
+            quarters=4,
+            today=date(2026, 5, 20),
+        )
+        self.assertEqual(payload['grain'], 'quarter')
+        self.assertEqual(payload['span_requested'], 4)
+        self.assertEqual(len(payload['periods']), 4)
+        self.assertEqual(payload['months'], [])
+        q1 = next(row for row in payload['periods'] if row['period'] == '2026-Q1')
+        self.assertEqual(q1['quantity_sold'], 1)
+        self.assertEqual(q1['label'], 'Q1 2026')
+
+
+class ProductTrendsVariantCompareTests(ManagerAPITestCase):
+    """Corrected: each variant can be compared, not only product totals."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cat = Category.objects.create(name='Var Trend Cat', is_active=True)
+        cls.product = Product.objects.create(
+            name='Cup Holder',
+            sku='TREND-CUP',
+            category=cat,
+            price=Decimal('80.00'),
+            cost=Decimal('30.00'),
+            stock_quantity=0,
+            track_stock=True,
+            has_variants=True,
+            is_active=True,
+        )
+        size = Size.objects.create(name='One', code='ONE', is_active=True)
+        black = Color.objects.create(name='BLACK', is_active=True)
+        gold = Color.objects.create(name='GOLD', is_active=True)
+        cls.v_black = ProductVariant.objects.create(
+            product=cls.product,
+            size=size,
+            color=black,
+            sku='TREND-CUP-BLACK',
+            price=Decimal('80.00'),
+            stock_quantity=10,
+            is_active=True,
+        )
+        cls.v_gold = ProductVariant.objects.create(
+            product=cls.product,
+            size=size,
+            color=gold,
+            sku='TREND-CUP-GOLD',
+            price=Decimal('100.00'),
+            stock_quantity=10,
+            is_active=True,
+        )
+        sale = Sale.objects.create(
+            status='completed',
+            payment_method='cash',
+            subtotal=Decimal('340.00'),
+            tax_amount=Decimal('0'),
+            discount_amount=Decimal('0'),
+            total=Decimal('340.00'),
+            amount_paid=Decimal('340.00'),
+            cashier=cls.manager_user,
+            occurred_at=timezone.make_aware(datetime(2026, 4, 12, 10, 0, 0)),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=cls.product,
+            variant=cls.v_black,
+            quantity=3,
+            unit_price=Decimal('80.00'),
+            subtotal=Decimal('240.00'),
+        )
+        SaleItem.objects.create(
+            sale=sale,
+            product=cls.product,
+            variant=cls.v_gold,
+            quantity=1,
+            unit_price=Decimal('100.00'),
+            subtotal=Decimal('100.00'),
+        )
+
+    def test_variant_compare_totals_and_series(self):
+        payload = build_product_trends(
+            product_id=self.product.id,
+            months=3,
+            today=date(2026, 4, 20),
+            include_variants=True,
+        )
+        self.assertEqual(len(payload['variants']), 2)
+        by_id = {row['variant_id']: row for row in payload['variants']}
+        self.assertEqual(by_id[self.v_black.id]['quantity_sold'], 3)
+        self.assertEqual(by_id[self.v_gold.id]['quantity_sold'], 1)
+        self.assertIn('BLACK', by_id[self.v_black.id]['label'])
+        self.assertTrue(payload['variant_keys'])
+        self.assertTrue(payload['variant_series'])
+        april = next(
+            row for row in payload['variant_series'] if row['period'] == '2026-04'
+        )
+        self.assertEqual(april[f'v_{self.v_black.id}'], 3)
+        self.assertEqual(april[f'v_{self.v_gold.id}'], 1)
+
+    def test_single_variant_scope_skips_compare(self):
+        payload = build_product_trends(
+            product_id=self.product.id,
+            months=3,
+            today=date(2026, 4, 20),
+            variant_id=self.v_gold.id,
+            include_variants=True,
+        )
+        self.assertEqual(payload['variant_id'], self.v_gold.id)
+        self.assertEqual(payload['summary']['quantity_sold'], 1)
+        self.assertEqual(payload['variants'], [])
 
 
 class ProductTrendsAPITests(ManagerAPITestCase):
@@ -218,6 +353,17 @@ class ProductTrendsAPITests(ManagerAPITestCase):
             self.assertIn('quantity_received', row)
             self.assertIn('revenue', row)
             self.assertIn('order_count', row)
+
+    def test_quarter_grain_via_api(self):
+        response = self.client.get(
+            '/api/reports/product-trends/',
+            {'product_id': self.product.id, 'grain': 'quarter', 'quarters': 4},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['grain'], 'quarter')
+        self.assertEqual(response.data['quarters_requested'], 4)
+        self.assertEqual(len(response.data['periods']), 4)
+        self.assertEqual(response.data['months'], [])
 
 
 class ProductTrendsModuleTests(ManagerAPITestCase):

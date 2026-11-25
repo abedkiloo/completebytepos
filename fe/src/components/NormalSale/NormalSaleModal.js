@@ -10,6 +10,7 @@ import { toast } from '../../utils/toast';
 import { shouldOpenVariantPicker } from '../../utils/variantSelector';
 import { buildSaleCommitSummary } from '../../utils/saleCommitSummary';
 import { cn } from '../../lib/cn';
+import { CHART_SERIES, CHART_STATUS } from '../../utils/chartTheme';
 import { Button } from '../ui/button';
 
 const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
@@ -786,9 +787,9 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                         <div className="mb-1 font-medium text-foreground">{product.name}</div>
                         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                           {product.sku && <span>SKU: {product.sku}</span>}
-                          <span style={{ fontWeight: '600', color: '#059669' }}>{formatCurrency(product.price)}</span>
+                          <span style={{ fontWeight: '600', color: CHART_STATUS.success }}>{formatCurrency(product.price)}</span>
                           {product.stock !== undefined && (
-                            <span style={{ color: product.stock > 0 ? '#059669' : '#dc2626' }}>
+                            <span style={{ color: product.stock > 0 ? CHART_STATUS.success : CHART_STATUS.destructive }}>
                               Stock: {product.stock}
                             </span>
                           )}
@@ -857,9 +858,9 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                                   <div className="mb-1 font-medium text-foreground">{product.name}</div>
                                   <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                                     {product.sku && <span>SKU: {product.sku}</span>}
-                                    <span style={{ fontWeight: '600', color: '#059669' }}>{formatCurrency(product.price)}</span>
+                                    <span style={{ fontWeight: '600', color: CHART_STATUS.success }}>{formatCurrency(product.price)}</span>
                                     {product.stock !== undefined && (
-                                      <span style={{ color: product.stock > 0 ? '#059669' : '#dc2626' }}>
+                                      <span style={{ color: product.stock > 0 ? CHART_STATUS.success : CHART_STATUS.destructive }}>
                                         Stock: {product.stock}
                                       </span>
                                     )}
@@ -1077,12 +1078,12 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
               <div className="grid grid-cols-1 gap-4 rounded-md bg-primary/5 p-4 md:grid-cols-[repeat(auto-fit,minmax(200px,1fr))]">
                 {/* Wallet Balance Display */}
                 {selectedCustomer && totals.walletBalance > 0 && (
-                  <div className="form-group" style={{ gridColumn: '1 / -1', padding: '0.75rem', background: '#dbeafe', borderRadius: '6px', border: '1px solid #93c5fd' }}>
+                  <div className="form-group" style={{ gridColumn: '1 / -1', padding: '0.75rem', background: 'hsl(214 33% 94%)', borderRadius: '6px', border: '1px solid hsl(214 24% 88%)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                      <label style={{ margin: 0, fontWeight: '600', color: '#1e40af' }}>
+                      <label style={{ margin: 0, fontWeight: '600', color: CHART_SERIES[0] }}>
                         💰 Customer Wallet Balance
                       </label>
-                      <span style={{ fontWeight: '700', fontSize: '1.1rem', color: '#059669' }}>
+                      <span style={{ fontWeight: '700', fontSize: '1.1rem', color: CHART_STATUS.success }}>
                         {formatCurrency(totals.walletBalance)}
                       </span>
                     </div>
@@ -1109,7 +1110,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                           value={walletAmount}
                           onChange={(e) => setWalletAmount(parseFloat(e.target.value) || 0)}
                           placeholder={`Use all (${formatCurrency(totals.walletBalance)})`}
-                          style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid #93c5fd' }}
+                          style={{ width: '100%', padding: '0.5rem', borderRadius: '4px', border: '1px solid hsl(214 24% 88%)' }}
                         />
                         <small style={{ color: '#6b7280', display: 'block', marginTop: '0.25rem' }}>
                           {walletAmount === 0 || !walletAmount
@@ -1153,22 +1154,22 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                   <small style={{ color: '#6b7280', marginTop: '0.25rem', display: 'block' }}>
                     Grand Total: {formatCurrency(totals.grandTotal)}
                     {totals.walletToUse > 0 && (
-                      <span style={{ color: '#059669', display: 'block', marginTop: '0.25rem', fontWeight: '600' }}>
+                      <span style={{ color: CHART_STATUS.success, display: 'block', marginTop: '0.25rem', fontWeight: '600' }}>
                         💰 Wallet: -{formatCurrency(totals.walletToUse)}
                       </span>
                     )}
                     {totals.totalPayment > totals.grandTotal && (
-                      <span style={{ color: '#059669', display: 'block', marginTop: '0.25rem', fontWeight: '600' }}>
+                      <span style={{ color: CHART_STATUS.success, display: 'block', marginTop: '0.25rem', fontWeight: '600' }}>
                         💰 Overpayment: {formatCurrency(totals.change)} will be added to wallet
                       </span>
                     )}
                     {totals.totalPayment > 0 && totals.totalPayment < totals.grandTotal && (
-                      <span style={{ color: '#f59e0b', display: 'block', marginTop: '0.25rem' }}>
+                      <span style={{ color: CHART_STATUS.warning, display: 'block', marginTop: '0.25rem' }}>
                         Balance: {formatCurrency(totals.balance)}
                       </span>
                     )}
                     {totals.totalPayment === totals.grandTotal && totals.totalPayment > 0 && (
-                      <span style={{ color: '#059669', display: 'block', marginTop: '0.25rem' }}>
+                      <span style={{ color: CHART_STATUS.success, display: 'block', marginTop: '0.25rem' }}>
                         ✓ Fully paid
                       </span>
                     )}
@@ -1198,7 +1199,7 @@ const NormalSaleModal = ({ isOpen, onClose, onSave }) => {
                   <small style={{ color: '#6b7280', marginTop: '0.25rem', display: 'block' }}>
                     Total: {formatCurrency(totals.grandTotal)}
                     {paymentPlanData.number_of_installments > 0 && (
-                      <span style={{ display: 'block', marginTop: '0.25rem', fontWeight: '600', color: '#059669' }}>
+                      <span style={{ display: 'block', marginTop: '0.25rem', fontWeight: '600', color: CHART_STATUS.success }}>
                         Per installment: {formatCurrency(totals.grandTotal / paymentPlanData.number_of_installments)}
                       </span>
                     )}

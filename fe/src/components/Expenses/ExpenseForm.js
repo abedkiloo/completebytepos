@@ -331,13 +331,32 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
               </div>
               {errors.category && <span className="error-text">{errors.category}</span>}
               {categories.length === 0 && (
-                <div className="info-message" style={{ marginTop: '0.5rem', padding: '0.75rem', background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: '4px', fontSize: '0.875rem' }}>
-                  ⚠️ No categories available. Please create a category first.
+                <div
+                  className="info-message"
+                  style={{
+                    marginTop: '0.5rem',
+                    padding: '0.75rem',
+                    background: 'hsl(var(--warning) / 0.12)',
+                    border: '1px solid hsl(var(--warning) / 0.45)',
+                    borderRadius: '4px',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  No categories available. Please create a category first.
                 </div>
               )}
 
               {showCategoryForm && (
-                <div className="category-form" style={{ marginTop: '1rem', padding: '1rem', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '6px' }}>
+                <div
+                  className="category-form"
+                  style={{
+                    marginTop: '1rem',
+                    padding: '1rem',
+                    background: 'hsl(var(--muted))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: '6px',
+                  }}
+                >
                   <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', fontWeight: '600' }}>Create New Category</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                     <input
@@ -345,14 +364,23 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
                       placeholder="Category name *"
                       value={newCategory.name}
                       onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
-                      style={{ padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px' }}
+                      style={{
+                        padding: '0.5rem',
+                        border: '1px solid hsl(var(--input))',
+                        borderRadius: '4px',
+                      }}
                     />
                     <textarea
                       placeholder="Description (optional)"
                       value={newCategory.description}
                       onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
                       rows="2"
-                      style={{ padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '4px', resize: 'vertical' }}
+                      style={{
+                        padding: '0.5rem',
+                        border: '1px solid hsl(var(--input))',
+                        borderRadius: '4px',
+                        resize: 'vertical',
+                      }}
                     />
                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
                       <button
@@ -369,7 +397,10 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
                         type="button"
                         onClick={handleCreateCategory}
                         disabled={creatingCategory || !newCategory.name.trim()}
-                        style={{ background: '#6366f1', color: 'white' }}
+                        style={{
+                          background: 'hsl(var(--primary))',
+                          color: 'hsl(var(--primary-foreground))',
+                        }}
                       >
                         {creatingCategory ? 'Creating...' : 'Create'}
                       </button>

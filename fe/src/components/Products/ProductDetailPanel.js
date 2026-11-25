@@ -202,6 +202,8 @@ export default function ProductDetailPanel({
             <ProductTrendsPanel
               productId={product.id}
               variantId={focusedVariantId}
+              variants={variants}
+              onVariantChange={(nextId) => setFocusedVariantId(nextId)}
             />
           ) : product ? (
             <>

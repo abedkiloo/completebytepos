@@ -50,6 +50,15 @@
     --input: 214 24% 88%;
     --ring: 214 73% 19%;
 
+    /* Chart series — navy/steel family only (see utils/chartTheme.js).
+       Success / warning / destructive stay for status outliers. */
+    --chart-1: 214 73% 19%;
+    --chart-2: 209 29% 55%;
+    --chart-3: 214 40% 38%;
+    --chart-4: 210 25% 68%;
+    --chart-5: 214 33% 48%;
+    --chart-6: 210 18% 42%;
+
     --radius: 1.25rem;                 /* ~20px — cue large cards */
   }
 

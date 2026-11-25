@@ -48,6 +48,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Skeleton } from '../ui/skeleton';
 import PeriodPills from './PeriodPills';
 import { DEFAULT_REPORT_PERIOD } from '../../utils/reportPeriods';
+import { CHART_SERIES, CHART_STATUS, chartAgingColor } from '../../utils/chartTheme';
 import ReportExportButtons from './ReportExportButtons';
 
 // --------------------------------------------------------------------------
@@ -133,15 +134,8 @@ function EmptyChart({ message = 'No data yet for this period' }) {
   );
 }
 
-// Stable, accessible colour palette so charts read well in light + dark.
-const CHART_COLOURS = [
-  '#2563eb', // blue-600
-  '#10b981', // emerald-500
-  '#f59e0b', // amber-500
-  '#ec4899', // pink-500
-  '#8b5cf6', // violet-500
-  '#06b6d4', // cyan-500
-];
+// Theme navy/steel series — status colours only for severity buckets.
+const CHART_COLOURS = CHART_SERIES;
 
 // --------------------------------------------------------------------------
 // Hook: load a report endpoint with period support
@@ -518,8 +512,8 @@ function InventoryHealthTile({ period, onOpen }) {
             <YAxis tick={{ fontSize: 10 }} width={30} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="quantity" fill={CHART_COLOURS[2]} name="On hand" />
-            <Bar dataKey="threshold" fill={CHART_COLOURS[3]} name="Low-stock at" />
+            <Bar dataKey="quantity" fill={CHART_COLOURS[0]} name="On hand" />
+            <Bar dataKey="threshold" fill={CHART_STATUS.warning} name="Low-stock at" />
           </BarChart>
         </ResponsiveContainer>
       )}
@@ -587,16 +581,7 @@ function CustomerOutstandingTile({ period, onOpen }) {
               {aging.map((row, idx) => (
                 <Cell
                   key={row.bucket}
-                  fill={
-                    // Older buckets shaded redder.
-                    idx === 0
-                      ? CHART_COLOURS[1]
-                      : idx === 1
-                      ? CHART_COLOURS[2]
-                      : idx === 2
-                      ? '#f97316'
-                      : '#dc2626'
-                  }
+                  fill={chartAgingColor(idx, aging.length)}
                 />
               ))}
             </Bar>
