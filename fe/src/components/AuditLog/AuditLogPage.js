@@ -104,6 +104,20 @@ const BULKY_CHANGE_KEYS = new Set([
   '__deleted__',
 ]);
 
+/**
+ * Technical id fields → sibling name keys that should be shown instead.
+ * When a name is present, the id row is hidden from people-facing audit UI.
+ */
+const ID_FIELD_NAME_KEYS = {
+  customer_id: ['customer_name', 'customer'],
+  product_id: ['product_name', 'product'],
+  from_customer_id: ['from_customer_name'],
+  to_customer_id: ['to_customer_name'],
+  variant_id: ['variant_name', 'variant'],
+  served_by_id: ['served_by_name', 'served_by'],
+  user_id: ['username', 'user_name', 'user'],
+};
+
 const AUDIT_PAGE_SIZE = 50;
 
 const MODULE_OPTIONS = [
@@ -170,14 +184,82 @@ function humanFieldName(key) {
     wallet_balance_after: 'Wallet after',
     pending_change_id: 'Approval #',
     customer_name: 'Customer',
+    product_name: 'Product',
+    from_customer_name: 'From customer',
+    to_customer_name: 'To customer',
     sale_number: 'Sale #',
     transaction_id: 'Txn #',
+    lines: 'Products',
+    item_count: 'Item count',
+    client_channel: 'Client channel',
   };
   if (special[key]) return special[key];
   return String(key || '')
     .replace(/^__|__$/g, '')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * True when this change key is a technical id that already has a name sibling.
+ *
+ * @param {string} field
+ * @param {Record<string, unknown>|null|undefined} changes
+ * @returns {boolean}
+ */
+export function isRedundantIdField(field, changes) {
+  if (!field || !changes || typeof changes !== 'object') return false;
+  const mapped = ID_FIELD_NAME_KEYS[field];
+  if (mapped) {
+    return mapped.some((key) => {
+      const value = changes[key];
+      return value != null && String(value).trim() !== '';
+    });
+  }
+  if (!String(field).endsWith('_id')) return false;
+  const base = String(field).slice(0, -3);
+  const nameHit = changes[`${base}_name`] ?? changes[base];
+  return nameHit != null && String(nameHit).trim() !== '';
+}
+
+/**
+ * Format sale/stock line payloads as "Product (variant) × qty" text.
+ *
+ * @param {unknown} lines
+ * @returns {string}
+ */
+export function formatAuditLines(lines) {
+  if (!Array.isArray(lines) || !lines.length) return '—';
+  return lines
+    .map((line) => {
+      if (line == null || typeof line !== 'object') return String(line);
+      const name =
+        line.product ||
+        line.product_name ||
+        (line.product_id != null ? `Product #${line.product_id}` : 'Item');
+      const variant = line.variant || line.variant_name || '';
+      const variantBit = variant ? ` (${variant})` : '';
+      const qty = line.quantity != null && line.quantity !== '' ? line.quantity : '';
+      return qty === '' ? `${name}${variantBit}` : `${name}${variantBit} × ${qty}`;
+    })
+    .join('\n');
+}
+
+/**
+ * People-facing value for one audit change row (names over ids, readable lines).
+ *
+ * @param {{ field: string, from: unknown, to: unknown }} row
+ * @returns {string}
+ */
+export function formatAuditRowValue(row) {
+  if (!row) return '—';
+  const raw = row.to ?? row.from;
+  if (row.field === 'lifecycle') return formatLifecycle(raw) || '—';
+  if (['amount', 'total', 'amount_paid', 'wallet_balance_after'].includes(row.field)) {
+    return formatMoneyish(raw) || formatValue(raw);
+  }
+  if (row.field === 'lines') return formatAuditLines(raw);
+  return formatValue(raw);
 }
 
 function formatLifecycle(value) {
@@ -218,16 +300,45 @@ export function extractFinanceFields(changes) {
 }
 
 function rowToSummaryPart(row) {
-  const display =
-    row.field === 'lifecycle'
-      ? formatLifecycle(row.to ?? row.from)
-      : ['amount', 'total', 'amount_paid', 'wallet_balance_after'].includes(row.field)
-        ? formatMoneyish(row.to ?? row.from) || formatValue(row.to ?? row.from)
-        : formatValue(row.to ?? row.from);
-  if (row.from != null && row.to != null && row.field !== 'lifecycle') {
+  const display = formatAuditRowValue(row);
+  if (
+    row.from != null &&
+    row.to != null &&
+    row.field !== 'lifecycle' &&
+    row.field !== 'lines'
+  ) {
     return `${row.label}: ${formatValue(row.from)} → ${formatValue(row.to)}`;
   }
   return `${row.label}: ${display}`;
+}
+
+function mapChangeEntries(entries, changesRoot, kind) {
+  const source = changesRoot && typeof changesRoot === 'object' ? changesRoot : {};
+  const rows = entries
+    .filter(([field]) => !isRedundantIdField(field, source))
+    .map(([field, value]) => {
+      if (kind === 'created') {
+        return { field, label: humanFieldName(field), from: null, to: value };
+      }
+      if (kind === 'deleted') {
+        return { field, label: humanFieldName(field), from: value, to: null };
+      }
+      if (value && typeof value === 'object' && ('from' in value || 'to' in value)) {
+        return {
+          field,
+          label: humanFieldName(field),
+          from: value.from,
+          to: value.to,
+        };
+      }
+      return {
+        field,
+        label: humanFieldName(field),
+        from: null,
+        to: value,
+      };
+    });
+  return rows;
 }
 
 /** Flatten audit `changes` into readable rows for list + detail. */
@@ -238,44 +349,17 @@ export function parseAuditChanges(changes) {
   if (changes.__created__ && typeof changes.__created__ === 'object') {
     return {
       kind: 'created',
-      rows: Object.entries(changes.__created__).map(([field, value]) => ({
-        field,
-        label: humanFieldName(field),
-        from: null,
-        to: value,
-      })),
+      rows: mapChangeEntries(Object.entries(changes.__created__), changes.__created__, 'created'),
     };
   }
   if (changes.__deleted__ && typeof changes.__deleted__ === 'object') {
     return {
       kind: 'deleted',
-      rows: Object.entries(changes.__deleted__).map(([field, value]) => ({
-        field,
-        label: humanFieldName(field),
-        from: value,
-        to: null,
-      })),
+      rows: mapChangeEntries(Object.entries(changes.__deleted__), changes.__deleted__, 'deleted'),
     };
   }
 
-  const rows = [];
-  Object.entries(changes).forEach(([field, value]) => {
-    if (value && typeof value === 'object' && ('from' in value || 'to' in value)) {
-      rows.push({
-        field,
-        label: humanFieldName(field),
-        from: value.from,
-        to: value.to,
-      });
-    } else {
-      rows.push({
-        field,
-        label: humanFieldName(field),
-        from: null,
-        to: value,
-      });
-    }
-  });
+  const rows = mapChangeEntries(Object.entries(changes), changes, 'diff');
   return { kind: rows.length ? 'diff' : 'empty', rows };
 }
 
@@ -383,6 +467,16 @@ function FinanceHighlight({ changes }) {
           </div>
         ) : null}
       </dl>
+      {Array.isArray(changes?.lines) && changes.lines.length ? (
+        <div className="mt-3 border-t border-border/60 pt-3">
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Products
+          </p>
+          <pre className="whitespace-pre-wrap break-words font-sans text-sm">
+            {formatAuditLines(changes.lines)}
+          </pre>
+        </div>
+      ) : null}
       {finance.lifecycle && finance.lifecycle !== 'money_posted' ? (
         <p className="mt-2 text-xs text-muted-foreground">
           This row is workflow only. Look for a separate “money posted” entry when cash actually
@@ -400,7 +494,12 @@ function ChangesTable({ changes }) {
     const preferred = [];
     const rest = [];
     parsed.rows.forEach((row) => {
-      if (FINANCE_SUMMARY_KEYS.includes(row.field) || row.field === 'action_type' || row.field === 'status') {
+      if (
+        FINANCE_SUMMARY_KEYS.includes(row.field) ||
+        row.field === 'action_type' ||
+        row.field === 'status' ||
+        row.field === 'lines'
+      ) {
         preferred.push(row);
       } else {
         rest.push(row);
@@ -426,19 +525,13 @@ function ChangesTable({ changes }) {
         </thead>
         <tbody>
           {orderedRows.map((row) => {
-            const raw = row.to ?? row.from;
-            const display =
-              row.field === 'lifecycle'
-                ? formatLifecycle(raw)
-                : ['amount', 'total', 'amount_paid', 'wallet_balance_after'].includes(row.field)
-                  ? formatMoneyish(raw) || formatValue(raw)
-                  : formatValue(raw);
+            const display = formatAuditRowValue(row);
             return (
             <tr key={row.field} className="border-b border-border/60 align-top">
               <td className="px-3 py-2 font-medium text-foreground">{row.label}</td>
               {showFrom ? (
                 <td className="px-3 py-2 whitespace-pre-wrap break-words text-muted-foreground">
-                  {formatValue(row.from)}
+                  {row.field === 'lines' ? formatAuditLines(row.from) : formatValue(row.from)}
                 </td>
               ) : null}
               <td className="px-3 py-2 whitespace-pre-wrap break-words tabular-nums">

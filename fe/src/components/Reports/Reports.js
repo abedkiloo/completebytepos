@@ -24,6 +24,7 @@ import ReportsHub from './ReportsHub';
 import SalesPersonReportView from './SalesPersonReportView';
 import StockValuationReportView from './StockValuationReportView';
 import TradingProfitReportView from './TradingProfitReportView';
+import ProductPerformanceReportView from './ProductPerformanceReportView';
 import PeriodPills from './PeriodPills';
 import {
   DEFAULT_REPORT_PERIOD,
@@ -133,7 +134,8 @@ const Reports = () => {
       reportParam &&
       reportParam !== 'sales-by-person' &&
       reportParam !== 'stock-valuation' &&
-      reportParam !== 'trading-profit'
+      reportParam !== 'trading-profit' &&
+      reportParam !== 'product-performance'
     ) {
       loadReport();
     }
@@ -165,6 +167,39 @@ const Reports = () => {
 
   if (reportParam === 'trading-profit') {
     return <TradingProfitReportView />;
+  }
+
+  if (reportParam === 'product-performance') {
+    if (!reportsLegacyReportEnabled(reportSettings, 'product-performance')) {
+      return (
+        <PageShell>
+          <PageHeader
+            title="Report unavailable"
+            description="Product performance is disabled in store settings or your package."
+          />
+          <Button variant="outline" onClick={() => navigate('/reports')}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to reports
+          </Button>
+        </PageShell>
+      );
+    }
+    return (
+      <PageShell>
+        <PageHeader
+          title="Product performance"
+          description="Pick any product and study sold units, revenue, and stock received by month or quarter."
+        >
+          <Button variant="outline" onClick={() => navigate('/reports')}>
+            <ArrowLeft className="h-4 w-4" />
+            All reports
+          </Button>
+        </PageHeader>
+        <div className={R.panel}>
+          <ProductPerformanceReportView />
+        </div>
+      </PageShell>
+    );
   }
 
   if (reportParam && reportParam !== '__legacy__' && !reportsLegacyReportEnabled(reportSettings, reportParam)) {
@@ -204,6 +239,9 @@ const Reports = () => {
     }
     if (reportParam === 'stock-valuation') {
       return <StockValuationReportView />;
+    }
+    if (reportParam === 'product-performance') {
+      return <ProductPerformanceReportView />;
     }
 
     if (loading) {
@@ -1060,6 +1098,7 @@ const Reports = () => {
       'annual': 'Annual Report',
       'sales-by-person': 'Sales by staff',
       'stock-valuation': 'Stock valuation',
+      'product-performance': 'Product performance',
     };
     return titles[reportParam] || 'Report';
   };
@@ -1087,10 +1126,14 @@ const Reports = () => {
               ? 'Month-end totals per sales person — filter, print, or download PDF, Excel, or CSV for commission records.'
               : reportParam === 'stock-valuation'
                 ? 'On-hand stock with inventory and selling value. PDF, Excel, and CSV include the store logo and name.'
-                : `Analytics for ${getReportTitle().toLowerCase()}. Download PDF or Excel anytime.`
+                : reportParam === 'product-performance'
+                  ? 'Pick any product and study sold units, revenue, and stock received by month or quarter.'
+                  : `Analytics for ${getReportTitle().toLowerCase()}. Download PDF or Excel anytime.`
           }
         >
-          {reportParam !== 'sales-by-person' && reportParam !== 'stock-valuation' ? (
+          {reportParam !== 'sales-by-person' &&
+          reportParam !== 'stock-valuation' &&
+          reportParam !== 'product-performance' ? (
             <ReportExportButtons slug={reportParam} params={exportParams} disabled={loading} />
           ) : null}
           <Button variant="outline" onClick={() => navigate('/reports')}>

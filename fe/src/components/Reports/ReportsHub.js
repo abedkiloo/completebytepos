@@ -34,6 +34,7 @@ import {
   reportsEnableInvoiceReports,
   reportsEnableCashReports,
   reportsEnableFinancialReports,
+  reportsProductTrendsEnabled,
   reportsShowDiscount,
   reportsShowTax,
   reportsShowLegacyCatalog,
@@ -616,6 +617,7 @@ export default function ReportsHub() {
 
   const showSales = reportsEnableSalesReports(reportSettings);
   const showProducts = reportsEnableProductReports(reportSettings);
+  const showProductPerformance = reportsProductTrendsEnabled(reportSettings);
   const showCash = reportsEnableCashReports(reportSettings);
   const showInventory = reportsEnableInventoryReports(reportSettings);
   const showInvoice = reportsEnableInvoiceReports(reportSettings);
@@ -630,6 +632,7 @@ export default function ReportsHub() {
   const visibleCount = [
     showSales,
     showProducts,
+    showProductPerformance,
     showCash,
     showInventory,
     showInvoice,
@@ -696,6 +699,34 @@ export default function ReportsHub() {
           </>
         ) : null}
         {showProducts ? <TopProductsTile period={period} onOpen={goLegacy('products')} /> : null}
+        {showProductPerformance ? (
+          <Card className="flex flex-col border-dashed" data-testid="product-performance-hub-card">
+            <CardHeader className="pb-3">
+              <div className="flex items-start gap-3">
+                <div className="rounded-md bg-primary/10 p-2 text-primary">
+                  <TrendingUp className="h-5 w-5" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">Product performance</CardTitle>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Any SKU — sold units, revenue, and stock received by month or quarter, with variant compare.
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="mt-auto pt-0">
+              <button
+                type="button"
+                onClick={() => navigate('/reports?report=product-performance')}
+                className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                data-testid="product-performance-hub-open"
+              >
+                Open product performance
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </CardContent>
+          </Card>
+        ) : null}
         {showCash ? <CashAndPaymentsTile period={period} onOpen={goLegacy('income')} /> : null}
         {showInventory ? (
           <>

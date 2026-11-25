@@ -24,7 +24,7 @@ Web sends `X-Client-Channel: web` on every API call; the mobile app sends `mobil
 
 ## Where to review
 
-Web **Audit log** page: filter by module, action, user, date, and **Web / Mobile app**. Detail drawer shows client channel + full changes.
+Web **Audit log** page: filter by module, action, user, date, and **Web / Mobile app**. Detail drawer shows client channel + full changes. Money rows show **customer name** and **product names** (sale lines); technical `customer_id` / `product_id` values are kept in storage but hidden in the people-facing detail when a name is present.
 
 ## Non-goals
 

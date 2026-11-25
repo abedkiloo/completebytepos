@@ -66,6 +66,8 @@ class SaleLineAuditTests(TestCase):
         self.assertEqual(row.changes['lines'][0]['product'], 'Stand 0')
         self.assertEqual(row.changes['lines'][0]['quantity'], 1)
         self.assertEqual(row.changes['lines'][1]['quantity'], 2)
+        self.assertEqual(row.changes['customer_name'], 'Line Buyer')
+        self.assertNotIn('product_id', row.changes['lines'][0])
         self.assertEqual(row.changes['total'], '200')
         self.assertEqual(row.changes['amount_paid'], '50.00')
         self.assertNotIn(PHONE, str(row.changes))

@@ -17,6 +17,7 @@ Prefix: `/api/reports/`
 - Sale reports use posted-sale scope helpers, not raw drafts.
 - Feature flags/labels from module settings gate/annotate responses.
 - Date filters should use inclusive start/end helpers from `services`.
+- **Product performance** (`?report=product-performance` on Reports, and the product desk Performance tab) uses `/api/reports/product-trends/`. Gated by `enable_product_reports` + package feature `reports.product_trends`. Pick any catalogue SKU; month or quarter charts for sold units, revenue, stock received, and variant compare.
 
 ## Audit
 

@@ -24,6 +24,10 @@ jest.mock('../../hooks/useModuleSettings', () => ({
   }),
 }));
 
+jest.mock('../../utils/moduleFeatures', () => ({
+  isModuleFeatureEnabled: () => true,
+}));
+
 jest.mock('recharts', () => ({
   ResponsiveContainer: ({ children }) => <div data-testid="chart">{children}</div>,
   LineChart: ({ children }) => <div>{children}</div>,
@@ -130,5 +134,13 @@ describe('ReportsHub period picker', () => {
         'pdf'
       );
     });
+  });
+
+  it('opens product performance from the hub card', async () => {
+    render(<ReportsHub />);
+    await waitFor(() => expect(reportsAPI.salesOverview).toHaveBeenCalled());
+    expect(screen.getByTestId('product-performance-hub-card')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('product-performance-hub-open'));
+    expect(mockNavigate).toHaveBeenCalledWith('/reports?report=product-performance');
   });
 });

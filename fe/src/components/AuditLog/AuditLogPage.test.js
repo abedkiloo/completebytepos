@@ -2,6 +2,9 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AuditLogPage, {
   extractFinanceFields,
+  formatAuditLines,
+  formatAuditRowValue,
+  isRedundantIdField,
   parseAuditChanges,
   summarizeAuditChanges,
 } from './AuditLogPage';
@@ -169,6 +172,63 @@ describe('audit change helpers', () => {
       })
     );
   });
+
+  it('unit: hides customer/product ids when names are present', () => {
+    const debt = {
+      reference: 'UKPRT7PS20',
+      customer_name: 'Njoki',
+      customer_id: 65,
+      customer_code: 'CUST-000065',
+      payment_method: 'mpesa',
+      wallet_balance_after: '-7800.00',
+      client_channel: 'web',
+      transaction_id: 931,
+      lines: [
+        { product: 'Cement 50kg', quantity: 2, variant: '' },
+        { product_id: 9, product_name: 'Hinge', quantity: 4 },
+      ],
+    };
+    expect(isRedundantIdField('customer_id', debt)).toBe(true);
+    expect(isRedundantIdField('product_id', { product_id: 3, product_name: 'Nails' })).toBe(true);
+    expect(isRedundantIdField('product_id', { product_id: 3 })).toBe(false);
+
+    const rows = parseAuditChanges(debt).rows;
+    const fields = rows.map((row) => row.field);
+    expect(fields).toContain('customer_name');
+    expect(fields).not.toContain('customer_id');
+    expect(fields).toContain('lines');
+    expect(formatAuditLines(debt.lines)).toContain('Cement 50kg × 2');
+    expect(formatAuditLines(debt.lines)).toContain('Hinge × 4');
+    expect(formatAuditRowValue(rows.find((row) => row.field === 'lines'))).toContain('Cement 50kg');
+  });
+
+  it('stress: parses large name-first change payloads without leaking ids', () => {
+    const lines = Array.from({ length: 400 }, (_, i) => ({
+      product: `SKU-${i}`,
+      quantity: (i % 7) + 1,
+      variant: i % 2 ? `Var ${i}` : '',
+    }));
+    const changes = {
+      customer_id: 65,
+      customer_name: 'Njoki',
+      product_id: 12,
+      product_name: 'Anchor',
+      lines,
+      amount: '100',
+      payment_method: 'cash',
+      lifecycle: 'money_posted',
+    };
+    const parsed = parseAuditChanges(changes);
+    expect(parsed.rows.some((row) => row.field === 'customer_id')).toBe(false);
+    expect(parsed.rows.some((row) => row.field === 'product_id')).toBe(false);
+    const lineRow = parsed.rows.find((row) => row.field === 'lines');
+    const text = formatAuditRowValue(lineRow);
+    expect(text.split('\n')).toHaveLength(400);
+    expect(text).toContain('SKU-0 × 1');
+    expect(text).toContain('SKU-399');
+    expect(summarizeAuditChanges(changes)).toContain('Njoki');
+    expect(summarizeAuditChanges(changes)).not.toMatch(/Customer Id:\s*65/i);
+  });
 });
 
 describe('AuditLogPage', () => {
@@ -240,6 +300,82 @@ describe('AuditLogPage', () => {
     expect(screen.getByText('All recorded values')).toBeInTheDocument();
     expect(screen.getByText('850')).toBeInTheDocument();
     expect(screen.getByText('CEM-50')).toBeInTheDocument();
+  });
+
+  it('corrected: detail shows customer and product names, not ids', async () => {
+    auditLogAPI.list.mockResolvedValue({
+      data: {
+        results: [
+          {
+            id: 91,
+            created_at: '2026-11-25T10:00:00Z',
+            username_snapshot: 'amina',
+            action: 'debt_settlement_posted',
+            module: 'sales',
+            object_repr: 'Money posted · debt collection · Njoki',
+            object_type: 'sales.CustomerWalletTransaction',
+            object_id: '931',
+            client_channel: 'web',
+            changes: {
+              lifecycle: 'money_posted',
+              reference: 'UKPRT7PS20',
+              customer_name: 'Njoki',
+              customer_id: 65,
+              customer_code: 'CUST-000065',
+              payment_method: 'mpesa',
+              wallet_balance_after: '-7800.00',
+              client_channel: 'web',
+              transaction_id: 931,
+              amount: '500.00',
+              lines: [{ product: 'Cement 50kg', quantity: 2, variant: '' }],
+            },
+          },
+        ],
+      },
+    });
+    auditLogAPI.get.mockResolvedValue({
+      data: {
+        id: 91,
+        created_at: '2026-11-25T10:00:00Z',
+        username_snapshot: 'amina',
+        action: 'debt_settlement_posted',
+        module: 'sales',
+        object_repr: 'Money posted · debt collection · Njoki',
+        object_type: 'sales.CustomerWalletTransaction',
+        object_id: '931',
+        client_channel: 'web',
+        changes: {
+          lifecycle: 'money_posted',
+          reference: 'UKPRT7PS20',
+          customer_name: 'Njoki',
+          customer_id: 65,
+          customer_code: 'CUST-000065',
+          payment_method: 'mpesa',
+          wallet_balance_after: '-7800.00',
+          client_channel: 'web',
+          transaction_id: 931,
+          amount: '500.00',
+          lines: [{ product: 'Cement 50kg', quantity: 2, variant: '' }],
+        },
+      },
+    });
+
+    render(<AuditLogPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Debt money posted/i)).toBeInTheDocument();
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: /Open audit detail for Debt money posted/i })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Audit trail details')).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('Njoki').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Cement 50kg × 2/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Customer Id')).not.toBeInTheDocument();
+    expect(screen.queryByText('Product Id')).not.toBeInTheDocument();
   });
 
   it('sends day, time, and user filters to the audit API', async () => {

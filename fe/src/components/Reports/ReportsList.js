@@ -71,6 +71,13 @@ const ALL_REPORTS = [
     description: 'Product sales performance and trends',
   },
   {
+    id: 'product-performance',
+    name: 'Product performance',
+    icon: '📈',
+    hasDetail: true,
+    description: 'Any product — month and quarter sold units, revenue, and stock received',
+  },
+  {
     id: 'expense',
     name: 'Expense Report',
     icon: '🔗',

@@ -42,8 +42,13 @@ describe('reportDisplay', () => {
     jest.spyOn(moduleFeatures, 'isModuleFeatureEnabled').mockReturnValue(true);
     expect(reportsProductTrendsEnabled({})).toBe(true);
     expect(reportsProductTrendsEnabled({ enable_product_reports: false })).toBe(false);
+    expect(reportsLegacyReportEnabled({}, 'product-performance')).toBe(true);
+    expect(
+      reportsLegacyReportEnabled({ enable_product_reports: false }, 'product-performance')
+    ).toBe(false);
     moduleFeatures.isModuleFeatureEnabled.mockReturnValue(false);
     expect(reportsProductTrendsEnabled({})).toBe(false);
+    expect(reportsLegacyReportEnabled({}, 'product-performance')).toBe(false);
     moduleFeatures.isModuleFeatureEnabled.mockRestore();
   });
 

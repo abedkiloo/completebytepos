@@ -72,6 +72,9 @@ class AuditEventsTests(TestCase):
         self.assertEqual(row.changes['payment_method'], 'mpesa')
         self.assertEqual(row.changes['pending_change_id'], 12)
         self.assertEqual(row.changes['transaction_id'], 44)
+        self.assertEqual(row.changes['customer_name'], 'Kogi')
+        self.assertEqual(row.changes['customer_code'], 'C-9')
+        self.assertIn('Kogi', row.object_repr)
         self.assertIn('money posted', row.object_repr.lower())
 
     def test_log_product_write_update(self):
