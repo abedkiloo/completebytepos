@@ -411,4 +411,76 @@ describe('CallBookPage', () => {
     expect(info).toHaveTextContent('0718000001');
     expect(info).not.toHaveTextContent('0718999888');
   });
+
+  test('corrected: after calling, copy then save records the outcome', async () => {
+    const { toast } = require('../../utils/toast');
+    customersAPI.holdCall.mockResolvedValue({
+      data: { day_claim: true, expires_at: '2026-11-26T23:59:59+03:00' },
+    });
+    customersAPI.markCall.mockResolvedValue({
+      data: { called_this_week: true, updated: false, outcome: 'called' },
+    });
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    await userEvent.click(screen.getByRole('button', { name: /Copy phone number/i }));
+    await waitFor(() => expect(customersAPI.holdCall).toHaveBeenCalledWith(1));
+    const notes = screen.getByLabelText('Notes for Not Called Shop');
+    await userEvent.clear(notes);
+    await userEvent.type(
+      notes,
+      'Called her informed her about the arrival of vecro in two weeks time',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Save record' }));
+    await waitFor(() => expect(customersAPI.markCall).toHaveBeenCalledWith(1, {
+      outcome: 'called',
+      request_summary: 'Called her informed her about the arrival of vecro in two weeks time',
+      follow_up_on: '',
+      follow_up_time: '',
+    }));
+    expect(toast.success).toHaveBeenCalledWith('Call recorded.');
+  });
+
+  test('security: reserve failure shows status without echoing a phone', async () => {
+    const { toast } = require('../../utils/toast');
+    customersAPI.holdCall.mockRejectedValue({
+      response: { status: 500, data: '<html>traceback 0718000999</html>' },
+    });
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    toast.error.mockClear();
+    await userEvent.click(screen.getByRole('button', { name: /Copy phone number/i }));
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Could not reserve this customer. (500)');
+    });
+    expect(toast.error).not.toHaveBeenCalledWith(expect.stringMatching(/0718/));
+  });
+
+  test('module: feature-off API response keeps save unavailable after load error', async () => {
+    customersAPI.callBook.mockRejectedValue({
+      response: { status: 403, data: { error: 'Feature disabled' } },
+    });
+    const { toast } = require('../../utils/toast');
+    render(<CallBookPage />);
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalled();
+    });
+    expect(screen.queryByRole('button', { name: 'Save record' })).not.toBeInTheDocument();
+  });
+
+  test('stress: rapid outcome toggles still post one save payload', async () => {
+    customersAPI.markCall.mockResolvedValue({
+      data: { called_this_week: true, updated: false, outcome: 'unreachable' },
+    });
+    render(<CallBookPage />);
+    await screen.findByText('Not Called Shop');
+    for (let i = 0; i < 12; i += 1) {
+      await userEvent.click(screen.getByRole('button', { name: 'No answer' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Unreachable' }));
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'Save record' }));
+    await waitFor(() => expect(customersAPI.markCall).toHaveBeenCalledTimes(1));
+    expect(customersAPI.markCall).toHaveBeenCalledWith(1, expect.objectContaining({
+      outcome: 'unreachable',
+    }));
+  });
 });

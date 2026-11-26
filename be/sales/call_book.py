@@ -119,6 +119,82 @@ def operation_now(day: date) -> datetime:
     return timezone.make_aware(datetime.combine(day, time(12, 0)), tz)
 
 
+def _aware(moment) -> datetime | None:
+    """
+    Normalize a stored clock for comparisons.
+
+    Args:
+        moment: Aware or naive datetime, or None.
+
+    Returns:
+        datetime | None: Aware datetime in the active timezone, or None when
+        ``moment`` is blank. Naive values are treated as Africa/Nairobi local.
+
+    Raises:
+        None.
+    """
+    if moment is None:
+        return None
+    if timezone.is_naive(moment):
+        return timezone.make_aware(moment, timezone.get_current_timezone())
+    return moment
+
+
+def _hold_blocks_other(*, hold, now: datetime, user_id: int) -> bool:
+    """
+    Whether an existing claim blocks a different staff member.
+
+    Args:
+        hold: ``CallHold`` row, or None.
+        now: Aware operation clock.
+        user_id: Acting user primary key.
+
+    Returns:
+        bool: True when the hold is still active and belongs to someone else.
+        Expired or own holds do not block. Naive ``expires_at`` is coerced.
+
+    Raises:
+        None.
+    """
+    if hold is None:
+        return False
+    expires = _aware(hold.expires_at)
+    clock = _aware(now)
+    if expires is None or clock is None or expires <= clock:
+        return False
+    return hold.held_by_id != user_id
+
+
+def _normalize_mark_inputs(outcome, request_summary) -> tuple[str, str] | tuple[None, str]:
+    """
+    Coerce mark body fields before validation.
+
+    Args:
+        outcome: Raw outcome from the client. Non-strings are rejected.
+        request_summary: Raw notes. Lists/dicts become an empty note so a
+            bad client cannot crash save; other values are stringified.
+
+    Returns:
+        tuple: ``(outcome, summary)`` with stripped text, or
+        ``(None, error)`` when the outcome type is unusable.
+
+    Raises:
+        None.
+    """
+    if outcome is None:
+        return None, 'Choose called, call later, no answer, or unreachable.'
+    if isinstance(outcome, (list, dict, bool)):
+        return None, 'Choose called, call later, no answer, or unreachable.'
+    text = str(outcome).strip()
+    if isinstance(request_summary, (list, dict)):
+        summary = ''
+    elif request_summary is None:
+        summary = ''
+    else:
+        summary = str(request_summary).strip()
+    return text, summary
+
+
 def week_monday(day: date) -> date:
     """
     Monday of the week that contains ``day``.
@@ -898,7 +974,11 @@ def call_later_due(outcome: str, follow_up_at, now: datetime) -> bool:
     """
     if outcome != CustomerCall.OUTCOME_ASK_LATER or follow_up_at is None or now is None:
         return False
-    return follow_up_at <= now
+    due = _aware(follow_up_at)
+    clock = _aware(now)
+    if due is None or clock is None:
+        return False
+    return due <= clock
 
 
 def _due_moment(call, prior):
@@ -1030,9 +1110,12 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
     day = today or nairobi_today()
     if not is_call_day(day):
         return 'weekend', {'error': 'Calls are marked Monday to Friday.'}
+    normalized = _normalize_mark_inputs(outcome, request_summary)
+    if normalized[0] is None:
+        return 'bad_outcome', {'error': normalized[1]}
+    outcome, summary = normalized
     if outcome not in OUTCOMES:
         return 'bad_outcome', {'error': 'Choose called, call later, no answer, or unreachable.'}
-    summary = (request_summary or '').strip()
     if len(summary) > SUMMARY_MAX:
         return 'too_long', {'error': 'Request summary must be 500 characters or fewer.'}
     follow_up = None
@@ -1072,7 +1155,7 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
             return 'no_phone', {'error': 'This customer has no number to call.'}
         now = operation_now(day)
         hold = CallHold.objects.select_for_update().filter(customer=customer).first()
-        if hold is not None and hold.expires_at > now and hold.held_by_id != user.id:
+        if _hold_blocks_other(hold=hold, now=now, user_id=user.id):
             return 'held', {
                 'error': (
                     f'{_display_name(hold.held_by)} already claimed this customer today. '
@@ -1202,7 +1285,7 @@ def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple
                 'called_by': _display_name(prior_today.called_by),
             }
         hold = CallHold.objects.select_for_update().filter(customer=customer).first()
-        if hold is not None and hold.expires_at > now and hold.held_by_id != user.id:
+        if _hold_blocks_other(hold=hold, now=now, user_id=user.id):
             return 'held', {
                 'error': (
                     f'{_display_name(hold.held_by)} already claimed this customer today. '
@@ -1213,7 +1296,32 @@ def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple
         CallHold.objects.filter(held_by=user).exclude(customer=customer).delete()
         expires = end_of_nairobi_day(day)
         if hold is None:
-            CallHold.objects.create(customer=customer, held_by=user, expires_at=expires)
+            from django.db import IntegrityError
+
+            try:
+                CallHold.objects.create(
+                    customer=customer,
+                    held_by=user,
+                    expires_at=expires,
+                )
+            except IntegrityError:
+                # Concurrent reserve for the same customer — take over if free.
+                hold = (
+                    CallHold.objects.select_for_update()
+                    .filter(customer=customer)
+                    .first()
+                )
+                if _hold_blocks_other(hold=hold, now=now, user_id=user.id):
+                    return 'held', {
+                        'error': (
+                            f'{_display_name(hold.held_by)} already claimed this customer today. '
+                            'Only one person can call them on this day.'
+                        ),
+                        'held_by': _display_name(hold.held_by),
+                    }
+                hold.held_by = user
+                hold.expires_at = expires
+                hold.save(update_fields=['held_by', 'expires_at'])
         else:
             hold.held_by = user
             hold.expires_at = expires
