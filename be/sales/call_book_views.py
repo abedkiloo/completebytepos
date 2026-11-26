@@ -258,7 +258,17 @@ class CallBookHoldView(APIView):
         Raises:
             None.
         """
-        code, payload = hold_customer(customer_id=customer_id, user=request.user)
+        try:
+            code, payload = hold_customer(customer_id=customer_id, user=request.user)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                'call-book hold failed for customer_id=%s', customer_id,
+            )
+            return Response(
+                {'error': 'Could not reserve this customer. Please try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         if code == 'ok':
             from sales.models import Customer
             from utils.audit_events import log_call_write
@@ -275,6 +285,8 @@ class CallBookHoldView(APIView):
                 },
             )
         http = status.HTTP_200_OK if code == 'ok' else _STATUS.get(code, 400)
+        if code != 'ok' and isinstance(payload, dict) and not payload.get('error'):
+            payload = {**payload, 'error': 'Could not reserve this customer.'}
         return Response(payload, status=http)
 
 

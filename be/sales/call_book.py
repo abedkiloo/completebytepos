@@ -1081,6 +1081,8 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
                 'held_by': _display_name(hold.held_by),
             }
         day_start, day_end = nairobi_day_bounds(day)
+        # Do not select_related(called_by) here: called_by is nullable, so
+        # Postgres rejects FOR UPDATE on that outer join (500 on hold/mark).
         prior_today = (
             CustomerCall.objects.select_for_update()
             .filter(
@@ -1088,7 +1090,6 @@ def mark_called(*, customer_id: int, user, outcome: str, request_summary: str, f
                 called_at__gte=day_start,
                 called_at__lt=day_end,
             )
-            .select_related('called_by')
             .order_by('called_at')
             .first()
         )
@@ -1180,6 +1181,8 @@ def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple
             return 'no_phone', {'error': 'This customer has no number to call.'}
         now = operation_now(day)
         day_start, day_end = nairobi_day_bounds(day)
+        # Lock CustomerCall alone — nullable called_by + select_related makes
+        # Postgres reject FOR UPDATE (outer join), which broke reserve/save.
         prior_today = (
             CustomerCall.objects.select_for_update()
             .filter(
@@ -1187,7 +1190,6 @@ def hold_customer(*, customer_id: int, user, today: date | None = None) -> tuple
                 called_at__gte=day_start,
                 called_at__lt=day_end,
             )
-            .select_related('called_by')
             .order_by('called_at')
             .first()
         )

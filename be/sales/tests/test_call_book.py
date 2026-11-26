@@ -1277,3 +1277,115 @@ class CallBookNoteUpdateTests(SuperAdminAPITestCase):
         self.assertEqual(http.status_code, status.HTTP_200_OK, http.content)
         self.assertTrue(http.json().get('updated'))
         self.assertNotIn(shop.phone, http.content.decode())
+
+
+class CallBookReserveSavePostgresFixTests(SuperAdminAPITestCase):
+    """Corrected: reserve/save must not FOR UPDATE a nullable called_by join."""
+
+    def setUp(self):
+        super().setUp()
+        _enable_call_book(True)
+
+    def test_unit_prior_today_lock_query_has_no_outer_join(self):
+        """Hold/mark lock CustomerCall without joining nullable called_by."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from sales.call_book import hold_customer, mark_called
+
+        shop = _customer('Outer Join Shop', '0718000920')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            with CaptureQueriesContext(connection) as captured:
+                code, _ = hold_customer(customer_id=shop.id, user=self.admin, today=MONDAY)
+            self.assertEqual(code, 'ok')
+            joined = ' '.join(item['sql'] for item in captured.captured_queries).upper()
+            if 'FOR UPDATE' in joined:
+                self.assertNotIn('LEFT OUTER JOIN', joined)
+                self.assertNotIn('LEFT JOIN', joined)
+
+            with CaptureQueriesContext(connection) as marked:
+                code, payload = mark_called(
+                    customer_id=shop.id,
+                    user=self.admin,
+                    outcome='called',
+                    request_summary='Vecro arrives in two weeks',
+                    today=MONDAY,
+                )
+            self.assertEqual(code, 'ok')
+            self.assertFalse(payload.get('updated'))
+            sql = ' '.join(item['sql'] for item in marked.captured_queries).upper()
+            if 'FOR UPDATE' in sql:
+                self.assertNotIn('LEFT OUTER JOIN', sql)
+                self.assertNotIn('LEFT JOIN', sql)
+
+    def test_corrected_http_reserve_then_save_like_screenshot(self):
+        """Screenshot path: Copy phone + Called + notes must return 200."""
+        shop = _customer(
+            'ANN KIMANI NRB Textile',
+            '254117056787',
+            county='Nairobi',
+            sub_county='Starehe',
+            ward='Landimawe',
+        )
+        thursday = date(2026, 11, 26)
+        with patch('sales.call_book.nairobi_today', return_value=thursday):
+            held = self.client.post(
+                f'/api/sales/call-book/{shop.id}/hold/',
+                {},
+                format='json',
+            )
+            saved = self.client.post(
+                f'/api/sales/call-book/{shop.id}/mark/',
+                {
+                    'outcome': 'called',
+                    'request_summary': (
+                        'Called her informed her about the arrival of vecro '
+                        'in two weeks time'
+                    ),
+                    'follow_up_on': '',
+                    'follow_up_time': '',
+                },
+                format='json',
+            )
+        self.assertEqual(held.status_code, status.HTTP_200_OK, held.content)
+        self.assertTrue(held.json().get('day_claim'))
+        self.assertEqual(saved.status_code, status.HTTP_200_OK, saved.content)
+        self.assertFalse(saved.json().get('updated'))
+        self.assertNotIn(shop.phone, held.content.decode())
+        self.assertNotIn(shop.phone, saved.content.decode())
+        self.assertEqual(CustomerCall.objects.filter(customer=shop).count(), 1)
+
+    def test_module_feature_off_blocks_reserve(self):
+        shop = _customer('Feature Off Hold', '0718000921')
+        _enable_call_book(False)
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            blocked = self.client.post(
+                f'/api/sales/call-book/{shop.id}/hold/',
+                {},
+                format='json',
+            )
+        self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_security_unauthenticated_reserve_denied(self):
+        shop = _customer('Anon Hold', '0718000922')
+        anon = APIClient()
+        denied = anon.post(
+            f'/api/sales/call-book/{shop.id}/hold/',
+            {},
+            format='json',
+        )
+        self.assertEqual(denied.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertNotIn(shop.phone, denied.content.decode())
+
+    def test_stress_repeated_reserve_same_user_stays_ok(self):
+        from sales.call_book import hold_customer
+
+        shop = _customer('Stress Hold', '0718000923')
+        with patch('sales.call_book.nairobi_today', return_value=MONDAY):
+            for _ in range(80):
+                code, payload = hold_customer(
+                    customer_id=shop.id,
+                    user=self.admin,
+                    today=MONDAY,
+                )
+                self.assertEqual(code, 'ok')
+                self.assertTrue(payload.get('day_claim'))
