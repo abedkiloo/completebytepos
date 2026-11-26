@@ -1587,3 +1587,256 @@ class FieldLoadMakerCheckerTests(SuperAdminAPITestCase):
         kept = FieldLoad.objects.get(pk=written.data['id'])
         self.assertEqual(kept.status, 'issue_rejected')
         self.assertEqual(kept.lines.get().quantity_taken, 5)
+
+
+class FieldLoadVariantUnitTests(SuperAdminAPITestCase):
+    """Unit: product/variant resolution and shop on-hand for load lines."""
+
+    def setUp(self):
+        super().setUp()
+        _enable(True)
+        from products.models import Color, ProductVariant, Size
+        from settings.test_utils import enable_product_variants
+
+        enable_product_variants()
+        self.parent = _product('Variant Tee', 'FL-VTEE', 0)
+        self.parent.has_variants = True
+        self.parent.save(update_fields=['has_variants'])
+        size = Size.objects.create(name='M', code='M', is_active=True)
+        color = Color.objects.create(name='Gold', is_active=True)
+        self.variant = ProductVariant.objects.create(
+            product=self.parent,
+            size=size,
+            color=color,
+            sku='FL-VTEE-M-GOLD',
+            price=Decimal('50.00'),
+            stock_quantity=25,
+            is_active=True,
+        )
+        self.plain = _product('Plain Mug', 'FL-MUG', 12)
+
+    def test_unit_product_for_line_requires_variant_when_rows_exist(self):
+        from agents.field_load_service import FieldLoadError, _product_for_line, _shop_on_hand
+
+        product, variant = _product_for_line(self.parent.id, self.variant.id)
+        self.assertEqual(product.id, self.parent.id)
+        self.assertEqual(variant.id, self.variant.id)
+        self.assertEqual(_shop_on_hand(product, variant), 25)
+        plain, none = _product_for_line(self.plain.id, None)
+        self.assertIsNone(none)
+        self.assertEqual(_shop_on_hand(plain, none), 12)
+        with self.assertRaises(FieldLoadError) as missing:
+            _product_for_line(self.parent.id, None)
+        self.assertEqual(missing.exception.code, 'bad_product')
+        with self.assertRaises(FieldLoadError):
+            _product_for_line(self.parent.id, 999999)
+        with self.assertRaises(FieldLoadError):
+            _product_for_line(999999, None)
+
+
+class FieldLoadVariantFlowTests(SuperAdminAPITestCase):
+    """Issue and sell a size/color line; stock moves on the variant."""
+
+    def setUp(self):
+        super().setUp()
+        _enable(True)
+        from products.models import Color, ProductVariant, Size
+        from settings.test_utils import enable_product_variants
+
+        enable_product_variants()
+        self.parent = _product('Field Shirt', 'FL-SHIRT', 0)
+        self.parent.has_variants = True
+        self.parent.save(update_fields=['has_variants'])
+        size = Size.objects.create(name='L', code='L', is_active=True)
+        gold = Color.objects.create(name='Gold', is_active=True)
+        black = Color.objects.create(name='Black', is_active=True)
+        self.gold = ProductVariant.objects.create(
+            product=self.parent,
+            size=size,
+            color=gold,
+            sku='FL-SHIRT-L-GOLD',
+            price=Decimal('50.00'),
+            stock_quantity=40,
+            is_active=True,
+        )
+        self.black = ProductVariant.objects.create(
+            product=self.parent,
+            size=size,
+            color=black,
+            sku='FL-SHIRT-L-BLACK',
+            price=Decimal('50.00'),
+            stock_quantity=10,
+            is_active=True,
+        )
+        self.agent = User.objects.create_user(username='load_var_agent', password='x')
+        ensure_permissions()
+        sync_default_roles()
+        UserProfile.objects.create(
+            user=self.agent,
+            role='field_agent',
+            custom_role=Role.objects.get(name=ROLE_FIELD_AGENT),
+            is_active=True,
+        )
+        self.customer = Customer.objects.create(name='Variant Duka', phone='0718333444')
+        _approve_creates(self)
+
+    def test_corrected_issue_and_sell_use_selected_variant(self):
+        """Corrected: load/sell with variant_id; parent-only body is rejected."""
+        rejected = self.client.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.agent.id,
+                'lines': [{'product_id': self.parent.id, 'quantity': 5}],
+            },
+            format='json',
+        )
+        self.assertEqual(rejected.status_code, status.HTTP_400_BAD_REQUEST)
+
+        issued = self.client.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.agent.id,
+                'lines': [{
+                    'product_id': self.parent.id,
+                    'variant_id': self.gold.id,
+                    'quantity': 8,
+                }],
+            },
+            format='json',
+        )
+        self.assertEqual(issued.status_code, status.HTTP_201_CREATED, issued.content)
+        line = issued.data['lines'][0]
+        self.assertEqual(line['variant_id'], self.gold.id)
+        self.assertIn('Gold', line['product_name'])
+        self.assertEqual(line['quantity_taken'], 8)
+        self.gold.refresh_from_db()
+        self.black.refresh_from_db()
+        self.assertEqual(self.gold.stock_quantity, 32)
+        self.assertEqual(self.black.stock_quantity, 10)
+
+        token = RefreshToken.for_user(self.agent)
+        agent_client = APIClient()
+        agent_client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        sold = agent_client.post(
+            f"/api/agents/field-loads/{issued.data['id']}/sell/",
+            {
+                'lines': [{
+                    'product_id': self.parent.id,
+                    'variant_id': self.gold.id,
+                    'quantity': 3,
+                }],
+                'customer_id': self.customer.id,
+                'amount_paid': '150.00',
+                'payment_method': 'cash',
+            },
+            format='json',
+        )
+        self.assertEqual(sold.status_code, status.HTTP_200_OK, sold.content)
+        self.assertEqual(sold.data['lines'][0]['quantity_sold'], 3)
+        self.gold.refresh_from_db()
+        self.assertEqual(self.gold.stock_quantity, 32)
+
+    def test_module_field_load_off_blocks_variant_issue(self):
+        _enable(False)
+        blocked = self.client.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.agent.id,
+                'lines': [{
+                    'product_id': self.parent.id,
+                    'variant_id': self.gold.id,
+                    'quantity': 1,
+                }],
+            },
+            format='json',
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_403_FORBIDDEN)
+        self.gold.refresh_from_db()
+        self.assertEqual(self.gold.stock_quantity, 40)
+
+    def test_stress_many_variant_issue_attempts_keep_stock(self):
+        for _ in range(120):
+            short = self.client.post(
+                '/api/agents/field-loads/',
+                {
+                    'agent_id': self.agent.id,
+                    'lines': [{
+                        'product_id': self.parent.id,
+                        'variant_id': self.black.id,
+                        'quantity': 50,
+                    }],
+                },
+                format='json',
+            )
+            self.assertEqual(short.status_code, status.HTTP_400_BAD_REQUEST)
+        self.black.refresh_from_db()
+        self.assertEqual(self.black.stock_quantity, 10)
+
+    def test_security_unauth_and_wrong_variant_rejected(self):
+        anonymous = APIClient()
+        hidden = anonymous.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.agent.id,
+                'lines': [{
+                    'product_id': self.parent.id,
+                    'variant_id': self.gold.id,
+                    'quantity': 1,
+                }],
+            },
+            format='json',
+        )
+        self.assertEqual(hidden.status_code, status.HTTP_401_UNAUTHORIZED)
+
+        other = _product('Other Bag', 'FL-OTHER', 5)
+        other.has_variants = True
+        other.save(update_fields=['has_variants'])
+        from products.models import ProductVariant
+
+        foreign = ProductVariant.objects.create(
+            product=other,
+            sku='FL-OTHER-V1',
+            price=Decimal('20.00'),
+            stock_quantity=5,
+            is_active=True,
+        )
+        mismatched = self.client.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.agent.id,
+                'lines': [{
+                    'product_id': self.parent.id,
+                    'variant_id': foreign.id,
+                    'quantity': 1,
+                }],
+            },
+            format='json',
+        )
+        self.assertEqual(mismatched.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn('0718333444', mismatched.content.decode())
+        self.gold.refresh_from_db()
+        self.assertEqual(self.gold.stock_quantity, 40)
+
+        sales_user = User.objects.create_user(username='load_var_sales', password='x')
+        UserProfile.objects.create(
+            user=sales_user,
+            role='cashier',
+            custom_role=Role.objects.get(name=ROLE_SALES),
+            is_active=True,
+        )
+        sales = APIClient()
+        sales.force_authenticate(user=sales_user)
+        for_other = sales.post(
+            '/api/agents/field-loads/',
+            {
+                'agent_id': self.admin.id,
+                'lines': [{
+                    'product_id': self.parent.id,
+                    'variant_id': self.gold.id,
+                    'quantity': 1,
+                }],
+            },
+            format='json',
+        )
+        self.assertEqual(for_other.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn('0718333444', for_other.content.decode())

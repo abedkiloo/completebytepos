@@ -179,11 +179,20 @@ def _line_numbers(line: FieldLoadLine, sold: int) -> dict:
     price = Decimal(str(line.product.price or 0)).quantize(Decimal('0.01'))
     if price < 0:
         price = Decimal('0.00')
+    variant_label = ''
+    if line.variant_id and getattr(line, 'variant', None) is not None:
+        from products.stock_alerts import _variant_display_label
+
+        variant_label = (_variant_display_label(line.variant) or '')[:80]
+    display_name = line.product.name
+    if variant_label:
+        display_name = f'{display_name} · {variant_label}'[:200]
     return {
         'id': line.id,
         'product_id': line.product_id,
-        'product_name': line.product.name,
+        'product_name': display_name,
         'variant_id': line.variant_id,
+        'variant_label': variant_label,
         'unit_price': f'{price:.2f}',
         'quantity_taken': line.quantity_taken,
         'quantity_sold': sold,
@@ -236,7 +245,12 @@ def serialize_loads(loads) -> list:
         return []
     ids = [load.id for load in load_list]
     lines_by_load = defaultdict(list)
-    for line in FieldLoadLine.objects.filter(load_id__in=ids).select_related('product'):
+    for line in FieldLoadLine.objects.filter(load_id__in=ids).select_related(
+        'product',
+        'variant',
+        'variant__size',
+        'variant__color',
+    ):
         lines_by_load[line.load_id].append(line)
     sold = {}
     sold_rows = (
@@ -517,6 +531,22 @@ def _product_for_line(product_id, variant_id):
     return product, variant
 
 
+def _shop_on_hand(product, variant) -> int:
+    """
+    Units available in the shop for a load line.
+
+    Args:
+        product: Active tracked product.
+        variant: Optional variant on that product.
+
+    Returns:
+        Non-negative on-hand count (variant stock when set, else product stock).
+    """
+    if variant is not None:
+        return max(0, int(variant.stock_quantity or 0))
+    return max(0, int(product.stock_quantity or 0))
+
+
 def list_field_agents():
     """
     Active sales employees a load can be written for.
@@ -657,9 +687,19 @@ def issue_load(*, agent_id: int, lines: list, user) -> FieldLoad:
         if key in seen:
             raise FieldLoadError('bad_lines', f'{product.name} is already on this load.')
         seen.add(key)
-        on_hand = int(product.stock_quantity or 0)
+        on_hand = _shop_on_hand(product, variant)
         if on_hand < qty:
-            raise FieldLoadError('no_stock', f'{product.name} does not have enough stock in the shop.')
+            label = product.name
+            if variant is not None:
+                from products.stock_alerts import _variant_display_label
+
+                vlabel = _variant_display_label(variant)
+                if vlabel:
+                    label = f'{product.name} ({vlabel})'
+            raise FieldLoadError(
+                'no_stock',
+                f'{label} does not have enough stock in the shop.',
+            )
         parsed.append((product, variant, qty))
     direct = user_may_approve(user)
     with transaction.atomic():
@@ -809,9 +849,19 @@ def revise_issue(*, load_id: int, lines: list, user) -> FieldLoad:
         if key in seen:
             raise FieldLoadError('bad_lines', f'{product.name} is already on this load.')
         seen.add(key)
-        on_hand = int(product.stock_quantity or 0)
+        on_hand = _shop_on_hand(product, variant)
         if on_hand < qty:
-            raise FieldLoadError('no_stock', f'{product.name} does not have enough stock in the shop.')
+            label = product.name
+            if variant is not None:
+                from products.stock_alerts import _variant_display_label
+
+                vlabel = _variant_display_label(variant)
+                if vlabel:
+                    label = f'{product.name} ({vlabel})'
+            raise FieldLoadError(
+                'no_stock',
+                f'{label} does not have enough stock in the shop.',
+            )
         parsed.append((product, variant, qty))
     with transaction.atomic():
         load = FieldLoad.objects.select_for_update().filter(pk=load_id).first()

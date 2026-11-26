@@ -1,5 +1,7 @@
 import {
   displayStatus,
+  draftLineKey,
+  draftLineName,
   fieldLoadHasSales,
   fieldLoadNoSalesLabel,
   fieldLoadSaleCount,
@@ -100,5 +102,33 @@ describe('field load math', () => {
     expect(label).toBe('No sales yet on this load.');
     expect(label).not.toMatch(/07\d/);
     expect(fieldLoadHasSales(null)).toBe(false);
+  });
+
+  test('unit: draft keys keep product and variant apart', () => {
+    expect(draftLineKey(9, 55)).toBe('9:55');
+    expect(draftLineKey(9, null)).toBe('9:base');
+    expect(draftLineKey(9, '')).toBe('9:base');
+    expect(draftLineName('Shirt', 'L / Gold')).toBe('Shirt · L / Gold');
+    expect(draftLineName('Shirt', '')).toBe('Shirt');
+    expect(draftLineName('', null)).toBe('Product');
+  });
+
+  test('corrected: same product different variants get distinct draft keys', () => {
+    expect(draftLineKey(4, 11)).not.toBe(draftLineKey(4, 12));
+    expect(draftLineKey(4, 11)).not.toBe(draftLineKey(4, null));
+  });
+
+  test('stress: draft keys stay unique across many variant ids', () => {
+    const keys = new Set();
+    for (let i = 0; i < 500; i += 1) {
+      keys.add(draftLineKey(7, i));
+    }
+    expect(keys.size).toBe(500);
+  });
+
+  test('security: draft line name never embeds a phone', () => {
+    const name = draftLineName('Cups', 'Gold');
+    expect(name).toBe('Cups · Gold');
+    expect(name).not.toMatch(/07\d/);
   });
 });

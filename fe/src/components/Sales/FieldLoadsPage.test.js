@@ -29,6 +29,36 @@ jest.mock('../../hooks/useDebouncedValue', () => ({
   useDebouncedValue: (value) => value,
 }));
 
+jest.mock('../../utils/moduleFeatures', () => ({
+  isProductVariantsEnabled: () => true,
+}));
+
+jest.mock('../POS/VariantSelector', () => ({
+  __esModule: true,
+  default: function MockVariantSelector({ product, onSelect, onClose, initialQuantity }) {
+    return (
+      <div role="dialog" aria-label={`Choose variant for ${product?.name || 'product'}`}>
+        <button
+          type="button"
+          onClick={() => onSelect({
+            variant: {
+              id: 55,
+              stock_quantity: 20,
+              size_name: 'L',
+              color_name: 'Gold',
+              sku: 'SHIRT-L-GOLD',
+            },
+            quantity: initialQuantity || 1,
+          })}
+        >
+          Pick L / Gold
+        </button>
+        <button type="button" onClick={onClose}>Close variants</button>
+      </div>
+    );
+  },
+}));
+
 const { fieldLoadsAPI, customersAPI, productsAPI } = require('../../services/api');
 
 const pending = {
@@ -385,5 +415,111 @@ describe('FieldLoadsPage', () => {
       lines: [{ product_id: 4, quantity: 2 }],
     }));
     expect(screen.queryByRole('button', { name: 'Send again for approval' })).not.toBeInTheDocument();
+  });
+
+  test('corrected: issuing a variant product opens the picker and posts variant_id', async () => {
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: { can_issue: true, can_approve: true, results: [] },
+    });
+    fieldLoadsAPI.agents.mockResolvedValue({
+      data: {
+        choose_employee: true,
+        results: [{ id: 1, name: 'Asha Manager' }],
+      },
+    });
+    productsAPI.search.mockResolvedValue({
+      data: [{
+        id: 22,
+        name: 'Field Shirt',
+        sku: 'SHIRT',
+        stock_quantity: 0,
+        has_variants: true,
+      }],
+    });
+    fieldLoadsAPI.create.mockResolvedValue({
+      data: {
+        id: 90,
+        status: 'open',
+        agent_name: 'Asha Manager',
+        lines: [{
+          id: 1,
+          product_id: 22,
+          variant_id: 55,
+          product_name: 'Field Shirt · L / Gold',
+          quantity_taken: 2,
+          quantity_sold: 0,
+          available: 2,
+          unit_price: '50.00',
+        }],
+        money: { expected: '0.00', collected: '0.00' },
+        sales: [],
+      },
+    });
+    render(<FieldLoadsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Create new field load' }));
+    await userEvent.selectOptions(
+      await screen.findByRole('combobox', { name: 'Person carrying this load' }),
+      '1',
+    );
+    await userEvent.type(screen.getByLabelText('Find product'), 'shirt');
+    await userEvent.click(await screen.findByRole('button', { name: /Field Shirt/ }));
+    await userEvent.clear(screen.getByLabelText('Quantity of Field Shirt'));
+    await userEvent.type(screen.getByLabelText('Quantity of Field Shirt'), '2');
+    await userEvent.click(screen.getByRole('button', { name: 'Add to load' }));
+    expect(screen.getByRole('dialog', { name: /Choose variant for Field Shirt/ })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Pick L / Gold' }));
+    expect(screen.getByText('Field Shirt · L / Gold')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Issue load' }));
+    await waitFor(() => expect(fieldLoadsAPI.create).toHaveBeenCalledWith({
+      agent_id: 1,
+      lines: [{ product_id: 22, quantity: 2, variant_id: 55 }],
+    }));
+  });
+
+  test('corrected: selling a variant load line posts that variant_id', async () => {
+    const variantLoad = {
+      id: 11,
+      status: 'open',
+      agent_name: 'Asha',
+      reference: 'FL-2026-11',
+      units_sold: 0,
+      lines: [{
+        id: 3,
+        product_id: 22,
+        variant_id: 55,
+        product_name: 'Field Shirt · L / Gold',
+        quantity_taken: 8,
+        quantity_sold: 0,
+        quantity_returned: null,
+        quantity_missing: null,
+        still_out: 8,
+        available: 8,
+        unit_price: '50.00',
+      }],
+      money: { expected: '0.00', collected: '0.00', cash: '0.00', mpesa: '0.00', credit: '0.00' },
+      sales: [],
+    };
+    fieldLoadsAPI.list.mockResolvedValue({
+      data: { can_issue: false, can_approve: true, results: [variantLoad] },
+    });
+    fieldLoadsAPI.sell.mockResolvedValue({ data: variantLoad });
+    render(<FieldLoadsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: /Asha/ }));
+    expect(screen.getByText('Field Shirt · L / Gold')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Quantity of Field Shirt · L / Gold'), '2');
+    await userEvent.click(screen.getByRole('button', { name: 'Record a field load sale' }));
+    await waitFor(() => expect(fieldLoadsAPI.sell).toHaveBeenCalledWith(11, expect.objectContaining({
+      lines: [{ product_id: 22, variant_id: 55, quantity: 2 }],
+    })));
+  });
+
+  test('module: field load feature off still hides the screen when variants are on', () => {
+    localStorage.setItem('enabled_modules', JSON.stringify({
+      sales: { is_enabled: true, features: { field_load: { is_enabled: false } } },
+      products: { is_enabled: true, features: { product_variants: { is_enabled: true } } },
+    }));
+    render(<FieldLoadsPage />);
+    expect(screen.getByText(/Field loads are turned off/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Find product')).not.toBeInTheDocument();
   });
 });

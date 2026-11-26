@@ -171,3 +171,27 @@ export function fieldLoadNoSalesLabel(load) {
   if (load?.status === 'open') return 'No sales yet on this load.';
   return 'No sales on this load.';
 }
+
+/**
+ * Stable draft-line key for product + optional variant.
+ *
+ * @param {number|string} productId Product id (positive).
+ * @param {number|string|null|undefined} variantId Variant id when set; blank means base product.
+ * @returns {string} Key of the form `productId:variantId` or `productId:base` (max ~40 chars).
+ */
+export function draftLineKey(productId, variantId) {
+  return `${productId}:${variantId != null && variantId !== '' ? variantId : 'base'}`;
+}
+
+/**
+ * Display name for a load draft line, including variant when present.
+ *
+ * @param {string} productName Parent product name (1–200 chars).
+ * @param {string} [variantLabel] Size/color label (0–80 chars).
+ * @returns {string} `Product · Variant` when labeled, otherwise the product name (fallback `Product`).
+ */
+export function draftLineName(productName, variantLabel) {
+  const base = String(productName || 'Product').trim() || 'Product';
+  const variant = String(variantLabel || '').trim();
+  return variant ? `${base} · ${variant}` : base;
+}

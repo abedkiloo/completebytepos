@@ -5,6 +5,8 @@ import { toast } from '../../utils/toast';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import {
   displayStatus,
+  draftLineKey,
+  draftLineName,
   fieldLoadHasSales,
   fieldLoadNoSalesLabel,
   loadMatchesFilter,
@@ -13,12 +15,17 @@ import {
   shortageUnits,
   statusLabel,
 } from '../../utils/fieldLoad';
+import {
+  getVariantRowLabel,
+  shouldOpenVariantPicker,
+} from '../../utils/variantSelector';
 import { useDebouncedValue } from '../../hooks/useDebouncedValue';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { PageHeader, PageShell } from '../page';
 import { isFeatureEnabled } from '../../utils/moduleSettings';
 import { CustomerPicker } from '../POS/v2/CustomerPicker';
+import VariantSelector from '../POS/VariantSelector';
 
 const FILTERS = [
   { id: 'all', label: 'All', empty: 'No field loads yet.' },
@@ -246,6 +253,8 @@ function IssueForm({ onCreated, onBack }) {
   const [takeQty, setTakeQty] = useState('1');
   const [lines, setLines] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [variantPickerProduct, setVariantPickerProduct] = useState(null);
+  const [pendingVariantQty, setPendingVariantQty] = useState(1);
   const debouncedQuery = useDebouncedValue(query, 280);
 
   useEffect(() => {
@@ -289,47 +298,73 @@ function IssueForm({ onCreated, onBack }) {
   }, [debouncedQuery]);
 
   /**
-   * Put the selected product on the draft, or add to its quantity.
+   * Append or increase a draft line for a product / variant pair.
    *
-   * Quantity is a whole number from 1 to the available stock, and at most
-   * 100000. A product already on the draft keeps one row.
-   *
+   * @param {object} product Catalogue product row.
+   * @param {object|null} variant Selected variant, or null for plain products.
+   * @param {number} qty Units to add (1–100000).
    * @returns {void}
    */
-  const addPicked = () => {
-    if (!picked) return;
-    const stock = Number(picked.stock_quantity);
-    const available = Number.isFinite(stock) && stock > 0 ? Math.min(stock, 100000) : 100000;
-    const asked = Math.min(available, Math.max(1, Math.floor(Number(takeQty) || 1)));
+  const addLineFromPick = useCallback((product, variant, qty) => {
+    if (!product?.id) return;
+    const variantId = variant?.id != null ? Number(variant.id) : null;
+    const stockRaw = variant
+      ? Number(variant.stock_quantity)
+      : Number(product.stock_quantity);
+    const available = Number.isFinite(stockRaw) && stockRaw > 0
+      ? Math.min(stockRaw, 100000)
+      : 100000;
+    const asked = Math.min(available, Math.max(1, Math.floor(Number(qty) || 1)));
+    const key = draftLineKey(product.id, variantId);
+    const variantLabel = variant ? getVariantRowLabel(variant) : '';
+    const name = draftLineName(product.name, variantLabel);
     setLines((prev) => {
-      const existing = prev.find((line) => line.product_id === picked.id);
+      const existing = prev.find((line) => line.key === key);
       if (!existing) {
         return [...prev, {
-          product_id: picked.id,
-          name: picked.name,
+          key,
+          product_id: product.id,
+          variant_id: variantId,
+          name,
           quantity: String(asked),
           stock: available,
         }];
       }
       const next = Math.min(available, (Number(existing.quantity) || 0) + asked);
       return prev.map((line) => (
-        line.product_id === picked.id ? { ...line, quantity: String(next) } : line
+        line.key === key ? { ...line, quantity: String(next), stock: available } : line
       ));
     });
     setTakeQty('1');
     setPicked(null);
     setQuery('');
     setProducts([]);
+  }, []);
+
+  /**
+   * Put the selected product on the draft, opening the variant picker when needed.
+   *
+   * @returns {void}
+   */
+  const addPicked = () => {
+    if (!picked) return;
+    const asked = Math.max(1, Math.floor(Number(takeQty) || 1));
+    if (shouldOpenVariantPicker(picked)) {
+      setPendingVariantQty(asked);
+      setVariantPickerProduct(picked);
+      return;
+    }
+    addLineFromPick(picked, null, asked);
   };
 
   /**
    * Drop one draft line before the load is issued.
    *
-   * @param {number} productId Product id on the draft, a positive integer.
+   * @param {string} key Draft line key from ``draftLineKey``.
    * @returns {void} Shop stock is unchanged.
    */
-  const removeLine = (productId) => {
-    setLines((prev) => prev.filter((line) => line.product_id !== productId));
+  const removeLine = (key) => {
+    setLines((prev) => prev.filter((line) => line.key !== key));
   };
 
   /**
@@ -342,7 +377,11 @@ function IssueForm({ onCreated, onBack }) {
     try {
       const { data } = await fieldLoadsAPI.create({
         agent_id: Number(agentId),
-        lines: lines.map((line) => ({ product_id: line.product_id, quantity: Number(line.quantity) })),
+        lines: lines.map((line) => ({
+          product_id: line.product_id,
+          quantity: Number(line.quantity),
+          ...(line.variant_id ? { variant_id: line.variant_id } : {}),
+        })),
       });
       toast.success(chooseEmployee
         ? 'Load issued. These pieces have left the shop.'
@@ -492,8 +531,8 @@ function IssueForm({ onCreated, onBack }) {
               </tr>
             </thead>
             <tbody>
-              {lines.map((line, index) => (
-                <tr key={line.product_id} className="border-t border-border">
+              {lines.map((line) => (
+                <tr key={line.key} className="border-t border-border">
                   <td className="py-2">{line.name}</td>
                   <td className="py-2 text-right">
                     <Input
@@ -504,8 +543,8 @@ function IssueForm({ onCreated, onBack }) {
                       value={line.quantity}
                       onChange={(event) => {
                         const quantity = event.target.value;
-                        setLines((prev) => prev.map((row, rowIndex) => (
-                          rowIndex === index ? { ...row, quantity } : row
+                        setLines((prev) => prev.map((row) => (
+                          row.key === line.key ? { ...row, quantity } : row
                         )));
                       }}
                     />
@@ -516,7 +555,7 @@ function IssueForm({ onCreated, onBack }) {
                       variant="ghost"
                       className="text-destructive"
                       aria-label={`Remove ${line.name}`}
-                      onClick={() => removeLine(line.product_id)}
+                      onClick={() => removeLine(line.key)}
                     >
                       Remove
                     </Button>
@@ -542,6 +581,23 @@ function IssueForm({ onCreated, onBack }) {
       <Button type="button" variant="success" className="w-full" onClick={save} disabled={saving || !agentId || lines.length === 0}>
         {saving ? 'Sending…' : (chooseEmployee ? 'Issue load' : 'Submit for approval')}
       </Button>
+      {variantPickerProduct ? (
+        <VariantSelector
+          product={variantPickerProduct}
+          validateStock
+          initialQuantity={pendingVariantQty}
+          onSelect={(payload) => {
+            addLineFromPick(
+              variantPickerProduct,
+              payload?.variant ?? null,
+              payload?.quantity ?? pendingVariantQty,
+            );
+            setVariantPickerProduct(null);
+            setPendingVariantQty(1);
+          }}
+          onClose={() => setVariantPickerProduct(null)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -558,16 +614,23 @@ function IssueForm({ onCreated, onBack }) {
  * @returns {JSX.Element}
  */
 function ReviseSentLoad({ load, onChange, onBack }) {
-  const [lines, setLines] = useState(() => (load.lines || []).map((item) => ({
-    product_id: item.product_id,
-    name: item.product_name,
-    quantity: String(item.quantity_taken),
-  })));
+  const [lines, setLines] = useState(() => (load.lines || []).map((item) => {
+    const variantId = item.variant_id != null ? Number(item.variant_id) : null;
+    return {
+      key: draftLineKey(item.product_id, variantId),
+      product_id: item.product_id,
+      variant_id: variantId,
+      name: item.product_name || draftLineName(item.product_name, item.variant_label),
+      quantity: String(item.quantity_taken),
+    };
+  }));
   const [query, setQuery] = useState('');
   const [products, setProducts] = useState([]);
   const [picked, setPicked] = useState(null);
   const [takeQty, setTakeQty] = useState('1');
   const [saving, setSaving] = useState(false);
+  const [variantPickerProduct, setVariantPickerProduct] = useState(null);
+  const [pendingVariantQty, setPendingVariantQty] = useState(1);
   const debouncedQuery = useDebouncedValue(query, 280);
   const canRevise = Boolean(load.can_revise_issue);
 
@@ -592,29 +655,62 @@ function ReviseSentLoad({ load, onChange, onBack }) {
   }, [debouncedQuery, canRevise]);
 
   /**
-   * Add the chosen product, or increase the quantity already on the load.
+   * Append or increase a revise draft line for product / variant.
+   *
+   * @param {object} product Catalogue product row.
+   * @param {object|null} variant Selected variant, or null for plain products.
+   * @param {number} qty Units to add (1–100000).
+   * @returns {void}
+   */
+  const addLineFromPick = useCallback((product, variant, qty) => {
+    if (!product?.id) return;
+    const variantId = variant?.id != null ? Number(variant.id) : null;
+    const stockRaw = variant
+      ? Number(variant.stock_quantity)
+      : Number(product.stock_quantity);
+    const available = Number.isFinite(stockRaw) && stockRaw > 0
+      ? Math.min(stockRaw, 100000)
+      : 100000;
+    const asked = Math.min(available, Math.max(1, Math.floor(Number(qty) || 1)));
+    const key = draftLineKey(product.id, variantId);
+    const variantLabel = variant ? getVariantRowLabel(variant) : '';
+    const name = draftLineName(product.name, variantLabel);
+    setLines((prev) => {
+      const existing = prev.find((line) => line.key === key);
+      if (!existing) {
+        return [...prev, {
+          key,
+          product_id: product.id,
+          variant_id: variantId,
+          name,
+          quantity: String(asked),
+        }];
+      }
+      const next = Math.min(available, (Number(existing.quantity) || 0) + asked);
+      return prev.map((line) => (
+        line.key === key ? { ...line, quantity: String(next) } : line
+      ));
+    });
+    setTakeQty('1');
+    setPicked(null);
+    setQuery('');
+    setProducts([]);
+  }, []);
+
+  /**
+   * Put the selected product on the revise draft, opening the variant picker when needed.
    *
    * @returns {void} Does nothing until a product is chosen.
    */
   const addPicked = () => {
     if (!picked) return;
-    const stock = Number(picked.stock_quantity);
-    const available = Number.isFinite(stock) && stock > 0 ? Math.min(stock, 100000) : 100000;
-    const asked = Math.min(available, Math.max(1, Math.floor(Number(takeQty) || 1)));
-    setLines((prev) => {
-      const existing = prev.find((line) => line.product_id === picked.id);
-      if (!existing) {
-        return [...prev, { product_id: picked.id, name: picked.name, quantity: String(asked) }];
-      }
-      const next = Math.min(available, (Number(existing.quantity) || 0) + asked);
-      return prev.map((line) => (
-        line.product_id === picked.id ? { ...line, quantity: String(next) } : line
-      ));
-    });
-    setPicked(null);
-    setQuery('');
-    setProducts([]);
-    setTakeQty('1');
+    const asked = Math.max(1, Math.floor(Number(takeQty) || 1));
+    if (shouldOpenVariantPicker(picked)) {
+      setPendingVariantQty(asked);
+      setVariantPickerProduct(picked);
+      return;
+    }
+    addLineFromPick(picked, null, asked);
   };
 
   /**
@@ -626,7 +722,11 @@ function ReviseSentLoad({ load, onChange, onBack }) {
     setSaving(true);
     try {
       const { data } = await fieldLoadsAPI.reviseIssue(load.id, {
-        lines: lines.map((line) => ({ product_id: line.product_id, quantity: Number(line.quantity) })),
+        lines: lines.map((line) => ({
+          product_id: line.product_id,
+          quantity: Number(line.quantity),
+          ...(line.variant_id ? { variant_id: line.variant_id } : {}),
+        })),
       });
       toast.success('Sent again for approval. Shop stock has not moved.');
       onChange(data);
@@ -651,7 +751,7 @@ function ReviseSentLoad({ load, onChange, onBack }) {
           <p className="text-sm">Change the products, then send the same load for approval again.</p>
           <ul className="space-y-2">
             {lines.map((line) => (
-              <li key={line.product_id} className="flex items-center gap-2">
+              <li key={line.key} className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 text-sm font-medium">{line.name}</span>
                 <Input
                   aria-label={`Quantity of ${line.name}`}
@@ -661,14 +761,14 @@ function ReviseSentLoad({ load, onChange, onBack }) {
                   className="w-24"
                   value={line.quantity}
                   onChange={(event) => setLines((prev) => prev.map((row) => (
-                    row.product_id === line.product_id ? { ...row, quantity: event.target.value } : row
+                    row.key === line.key ? { ...row, quantity: event.target.value } : row
                   )))}
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   aria-label={`Remove ${line.name}`}
-                  onClick={() => setLines((prev) => prev.filter((row) => row.product_id !== line.product_id))}
+                  onClick={() => setLines((prev) => prev.filter((row) => row.key !== line.key))}
                 >
                   Remove
                 </Button>
@@ -737,6 +837,23 @@ function ReviseSentLoad({ load, onChange, onBack }) {
           >
             {saving ? 'Sending…' : 'Send again for approval'}
           </Button>
+          {variantPickerProduct ? (
+            <VariantSelector
+              product={variantPickerProduct}
+              validateStock
+              initialQuantity={pendingVariantQty}
+              onSelect={(payload) => {
+                addLineFromPick(
+                  variantPickerProduct,
+                  payload?.variant ?? null,
+                  payload?.quantity ?? pendingVariantQty,
+                );
+                setVariantPickerProduct(null);
+                setPendingVariantQty(1);
+              }}
+              onClose={() => setVariantPickerProduct(null)}
+            />
+          ) : null}
         </>
       ) : (
         <ul className="space-y-1 text-sm">
