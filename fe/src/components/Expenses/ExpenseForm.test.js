@@ -99,5 +99,31 @@ describe('ExpenseForm save errors', () => {
     await submit();
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(expensesAPI.update.mock.calls[0][1]).not.toHaveProperty('status');
+    expect(toast.success).toHaveBeenCalledWith('Sent back for approval.');
+  });
+
+  it('resolves category from category_name when list omits category id', async () => {
+    cacheStoreSettings({ maker_checker_enabled: false });
+    expensesAPI.update.mockResolvedValue({ data: {} });
+    const onSave = jest.fn();
+    render(
+      <ExpenseForm
+        expense={{
+          ...expense,
+          category: null,
+          category_name: 'Fuel',
+          status: 'rejected',
+        }}
+        categories={categories}
+        onClose={jest.fn()}
+        onSave={onSave}
+      />
+    );
+    await submit();
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(expensesAPI.update).toHaveBeenCalledWith(
+      29,
+      expect.objectContaining({ category: 3 })
+    );
   });
 });

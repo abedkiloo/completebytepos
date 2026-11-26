@@ -15,6 +15,7 @@ import {
 } from '../../utils/makerChecker';
 import { hasPermission } from '../../utils/roleAccess';
 import { findCategoryByName } from '../../utils/expenseFilters';
+import { resubmitSuccessMessage } from '../../utils/approvalReturn';
 import { CATALOG_FETCH_PAGE_SIZE } from '../../config/pagination';
 import { dispatchNavBadgesRefresh } from '../../utils/navBadges';
 import { formatApiError } from '../../utils/apiErrors';
@@ -64,8 +65,11 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
 
   useEffect(() => {
     if (expense) {
+      const categoryId = expense.category
+        || findCategoryByName(categories, expense.category_name)?.id
+        || '';
       setFormData({
-        category: expense.category || '',
+        category: categoryId,
         amount: expense.amount || '',
         description: expense.description || '',
         payment_method: expense.payment_method || 'cash',
@@ -80,7 +84,7 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
       setImageFile(null);
       setImagePreview(null);
     }
-  }, [expense]);
+  }, [expense, categories]);
 
   const handleImageChange = (e) => {
     const file = e.target.files?.[0] || null;
@@ -118,8 +122,11 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
   const validate = () => {
     const newErrors = {};
 
-    const categoryErr = requiredChoiceMessage(formData.category, 'category');
-    if (categoryErr) newErrors.category = categoryErr;
+    // Claims may ship without a category; shop expenses still need one.
+    if (!(expense && expense.is_claim && !formData.category)) {
+      const categoryErr = requiredChoiceMessage(formData.category, 'category');
+      if (categoryErr) newErrors.category = categoryErr;
+    }
     const amountErr = moneyMessage(formData.amount);
     if (amountErr) newErrors.amount = amountErr;
     const descErr = required(formData.description, 'Enter a description, e.g. Shop rent for September');
@@ -235,12 +242,17 @@ const ExpenseForm = ({ expense, categories, onClose, onSave, onCategoryCreated }
       } else {
         await expensesAPI.create(payload);
       }
+      const wasRejected = expense && expense.status === 'rejected';
       const mcMsg = financialSubmitSuccessMessage(storeSettings);
-      if (mcMsg) {
+      if (wasRejected) {
+        toast.success(resubmitSuccessMessage());
+        dispatchNavBadgesRefresh();
+      } else if (mcMsg) {
         toast.warning(mcMsg);
         dispatchNavBadgesRefresh();
+      } else {
+        toast.success(expense ? 'Expense updated' : 'Expense created');
       }
-      else toast.success(expense ? 'Expense updated' : 'Expense created');
       setShowCommitConfirm(false);
       onSave();
     } catch (error) {

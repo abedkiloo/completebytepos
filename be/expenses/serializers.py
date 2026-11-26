@@ -140,10 +140,11 @@ class ExpenseListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Expense
         fields = [
-            'id', 'expense_number', 'category_name',
+            'id', 'expense_number', 'category', 'category_name',
             'category_include_in_trading_profit',
             'amount', 'description', 'payment_method', 'status',
-            'vendor', 'expense_date', 'image_url', 'notes', 'needs_redo', 'is_claim',
+            'vendor', 'receipt_number', 'expense_date', 'image_url', 'notes',
+            'needs_redo', 'is_claim',
             'created_by', 'created_by_name', 'created_at'
         ]
 

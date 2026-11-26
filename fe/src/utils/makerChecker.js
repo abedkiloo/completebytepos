@@ -484,8 +484,11 @@ export function financialRecordEditable(record, settings, { allowFinalized = fal
 }
 
 /**
- * Expense edit: ``expenses.update`` (admin default) may correct any non-voided row.
- * Creators with ``expenses.create`` may still edit their own pending/rejected rows.
+ * Expense edit: mirrors BE ``CanUpdateExpense``.
+ *
+ * - ``expenses.update`` may correct any non-voided row (including posted).
+ * - ``expenses.create`` owners may edit their own ``pending`` / ``rejected`` rows.
+ * - ``expenses.claim`` owners may edit their own pending/rejected claims.
  */
 export function canEditExpense(
   record,
@@ -497,10 +500,12 @@ export function canEditExpense(
   if (hasPermission(permissions, 'expenses', 'update')) {
     return financialRecordEditable(record, settings, { allowFinalized: true });
   }
+  if (!['pending', 'rejected'].includes(record.status)) return false;
   if (!financialRecordEditable(record, settings)) return false;
-  if (!hasPermission(permissions, 'expenses', 'create')) return false;
   if (currentUserId == null || record.created_by == null) return false;
-  return Number(record.created_by) === Number(currentUserId);
+  if (Number(record.created_by) !== Number(currentUserId)) return false;
+  if (hasPermission(permissions, 'expenses', 'create')) return true;
+  return Boolean(record.is_claim) && hasPermission(permissions, 'expenses', 'claim');
 }
 
 export function getPermissionsFromStorage() {

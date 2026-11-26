@@ -476,10 +476,11 @@ describe('makerChecker', () => {
     expect(financialRecordEditable({ status: 'voided' }, on)).toBe(false);
   });
 
-  it('canEditExpense requires expenses.update or own pending create', () => {
+  it('canEditExpense requires expenses.update or own pending/rejected create or claim', () => {
     const on = { maker_checker_enabled: true };
     const updatePerms = [{ module: 'expenses', action: 'update' }];
     const createPerms = [{ module: 'expenses', action: 'create' }];
+    const claimPerms = [{ module: 'expenses', action: 'claim' }];
     expect(
       canEditExpense({ status: 'approved', created_by: 1 }, on, updatePerms, 1)
     ).toBe(true);
@@ -490,7 +491,26 @@ describe('makerChecker', () => {
       canEditExpense({ status: 'pending', created_by: 9 }, on, createPerms, 9)
     ).toBe(true);
     expect(
+      canEditExpense({ status: 'rejected', created_by: 9 }, on, createPerms, 9)
+    ).toBe(true);
+    expect(
       canEditExpense({ status: 'pending', created_by: 9 }, on, createPerms, 1)
+    ).toBe(false);
+    expect(
+      canEditExpense(
+        { status: 'rejected', created_by: 4, is_claim: true },
+        on,
+        claimPerms,
+        4
+      )
+    ).toBe(true);
+    expect(
+      canEditExpense(
+        { status: 'rejected', created_by: 4, is_claim: false },
+        on,
+        claimPerms,
+        4
+      )
     ).toBe(false);
   });
 

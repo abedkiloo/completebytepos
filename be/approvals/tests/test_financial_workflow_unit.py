@@ -175,3 +175,19 @@ class FinancialWorkflowDisabledTests(TestCase):
 
         self.assertIsNone(require_proposal_reason(Req()))
         _set_mc(False)
+
+    def test_prepare_financial_update_requeues_rejected_when_mc_off(self):
+        """Editing a returned expense requeues even when maker-checker is off."""
+        _set_mc(False)
+        expense = Expense.objects.create(
+            description='Returned offline',
+            amount=Decimal('12.00'),
+            expense_date='2026-06-03',
+            status='rejected',
+        )
+        req = MagicMock()
+        req.data = {}
+        prepare_financial_update(req, expense)
+        expense.refresh_from_db()
+        self.assertEqual(expense.status, 'pending')
+        _set_mc(False)

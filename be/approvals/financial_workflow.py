@@ -105,6 +105,21 @@ def finalize_financial_create(request, instance) -> None:
 
 
 def prepare_financial_update(request, instance, *, allow_finalized: bool = False) -> None:
+    """Apply maker-checker locks and requeue rejected rows before a field save.
+
+    Args:
+        request: DRF request; may carry ``proposal_reason`` (1–2000 chars when MC on).
+        instance: Expense/income/transfer with a ``status`` field.
+        allow_finalized: When True, ``expenses.update``-style callers may edit
+            approved/paid/completed rows without changing status or requiring a reason.
+
+    Returns:
+        None. Mutates and may ``save`` ``instance`` (notes and/or status).
+
+    Raises:
+        ValidationError: Voided rows, locked finalized rows when MC is on and
+            ``allow_finalized`` is False, or missing ``proposal_reason`` when MC is on.
+    """
     validate_locked_record_update(instance, allow_finalized=allow_finalized)
     status = getattr(instance, 'status', None)
     # Permission-gated correction of posted rows — keep status, no maker reason.
@@ -116,7 +131,9 @@ def prepare_financial_update(request, instance, *, allow_finalized: bool = False
         append_reason_to_notes(instance, reason)
         if hasattr(instance, 'notes'):
             update_fields.append('notes')
-    if is_maker_checker_enabled() and status == 'rejected':
+    # Editing a returned row always requeues it for approval — with or without
+    # maker-checker — so the owner can fix fields and send it back in one save.
+    if status == 'rejected':
         instance.status = 'pending'
         update_fields.append('status')
     if update_fields:

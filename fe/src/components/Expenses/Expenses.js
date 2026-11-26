@@ -36,7 +36,10 @@ import {
   detectPeriodFromDates,
   periodToDateFilters,
 } from '../../utils/reportPeriods';
-import { rejectionReturnedMessage } from '../../utils/approvalReturn';
+import {
+  rejectionReturnedMessage,
+  resubmitSuccessMessage,
+} from '../../utils/approvalReturn';
 import { readExpenseNotes } from '../../utils/approvalDecisions';
 import HelpHint from '../Shared/HelpHint';
 import { Button } from '../ui/button';
@@ -318,6 +321,20 @@ const Expenses = () => {
   const handleEdit = (expense) => {
     setEditingExpense(expense);
     setShowForm(true);
+  };
+
+  const handleResubmit = async (expense) => {
+    try {
+      await expensesAPI.resubmit(expense.id);
+      toast.success(resubmitSuccessMessage());
+      loadExpenses();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.error ||
+          error.response?.data?.detail ||
+          'Could not send this expense back for approval.'
+      );
+    }
   };
 
   const handleDelete = (id) => {
@@ -763,12 +780,30 @@ const Expenses = () => {
                           {expense.needs_redo ? 'Undo redo' : 'Redo'}
                         </Button>
                         )}
+                        {canEditExpense(expense, storeSettings, permissions) &&
+                          expense.status === 'rejected' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid={`expense-resubmit-${expense.id}`}
+                          onClick={() => handleResubmit(expense)}
+                          aria-label="Send back for approval"
+                          title="Send back for approval"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                        )}
                         {canEditExpense(expense, storeSettings, permissions) && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleEdit(expense)}
                           aria-label="Edit expense"
+                          title={
+                            expense.status === 'rejected'
+                              ? 'Fix and send back for approval'
+                              : 'Edit expense'
+                          }
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>

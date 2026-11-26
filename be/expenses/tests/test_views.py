@@ -105,6 +105,114 @@ class ExpenseViewsTestCase(ManagerAPITestCase):
         self.assertEqual(ok.status_code, status.HTTP_200_OK, ok.data)
         self.assertEqual(ok.data['description'], 'Fuel for van')
 
+    def test_owner_can_update_rejected_expense_and_list_includes_category(self):
+        """Returned expenses stay editable; save requeues to pending; list exposes category id."""
+        from settings.test_utils import disable_maker_checker
+
+        disable_maker_checker()
+        rejected = Expense.objects.create(
+            category=self.cat,
+            description='Needs receipt',
+            amount=Decimal('40.00'),
+            payment_method='cash',
+            expense_date=timezone.localdate(),
+            status='rejected',
+            created_by=self.manager_user,
+            receipt_number='R-1',
+            notes='[Rejected by admin] Missing receipt',
+        )
+        listed = self.client.get('/api/expenses/', {'status': 'rejected'})
+        self.assertEqual(listed.status_code, status.HTTP_200_OK, listed.data)
+        rows = listed.data.get('results', listed.data)
+        match = next(row for row in rows if row['id'] == rejected.id)
+        self.assertEqual(match['category'], self.cat.id)
+        self.assertEqual(match['receipt_number'], 'R-1')
+
+        updated = self._form_put(
+            rejected,
+            description='Needs receipt — photo attached',
+            amount='42.00',
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK, updated.data)
+        self.assertEqual(updated.data['status'], 'pending')
+        self.assertEqual(updated.data['description'], 'Needs receipt — photo attached')
+        rejected.refresh_from_db()
+        self.assertEqual(rejected.status, 'pending')
+        self.assertEqual(str(rejected.amount), '42.00')
+
+    def test_other_user_cannot_update_rejected_expense(self):
+        """Security: IDOR — another staff member cannot edit a returned expense."""
+        from django.contrib.auth.models import User
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        from accounts.models import UserProfile
+        from settings.test_utils import disable_maker_checker
+
+        disable_maker_checker()
+        other = User.objects.create_user('expense_other', password='pass12345')
+        UserProfile.objects.create(
+            user=other,
+            role='manager',
+            custom_role=self.manager_role,
+            is_active=True,
+        )
+        rejected = Expense.objects.create(
+            category=self.cat,
+            description='Not yours',
+            amount=Decimal('55.00'),
+            payment_method='cash',
+            expense_date=timezone.localdate(),
+            status='rejected',
+            created_by=self.manager_user,
+        )
+        client = APIClient()
+        token = RefreshToken.for_user(other)
+        client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+        response = client.put(
+            f'/api/expenses/{rejected.id}/',
+            {
+                'category': self.cat.id,
+                'amount': '55.00',
+                'description': 'Hijacked',
+                'payment_method': 'cash',
+                'vendor': '',
+                'receipt_number': '',
+                'expense_date': rejected.expense_date.isoformat(),
+                'notes': '',
+            },
+            format='json',
+        )
+        # Hidden from queryset (404) or explicit deny (403) — either blocks the edit.
+        self.assertIn(response.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND))
+        rejected.refresh_from_db()
+        self.assertEqual(rejected.description, 'Not yours')
+        self.assertEqual(rejected.status, 'rejected')
+
+    def test_rejected_update_stress_requeues_repeated_saves(self):
+        """Corrected functionality under load: many edits keep a returned row pending."""
+        from settings.test_utils import disable_maker_checker
+
+        disable_maker_checker()
+        expense = Expense.objects.create(
+            category=self.cat,
+            description='Stress start',
+            amount=Decimal('10.00'),
+            payment_method='cash',
+            expense_date=timezone.localdate(),
+            status='rejected',
+            created_by=self.manager_user,
+        )
+        for i in range(25):
+            expense.status = 'rejected'
+            expense.save(update_fields=['status'])
+            response = self._form_put(expense, description=f'Stress edit {i}')
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+            self.assertEqual(response.data['status'], 'pending')
+            expense.refresh_from_db()
+            self.assertEqual(expense.status, 'pending')
+            self.assertEqual(expense.description, f'Stress edit {i}')
+
     def test_create_and_edit_cannot_approve_an_expense(self):
         from settings.test_utils import disable_maker_checker
 
