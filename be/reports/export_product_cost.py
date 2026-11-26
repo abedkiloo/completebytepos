@@ -82,6 +82,7 @@ def strip_product_cost_fields(row: dict[str, Any]) -> dict[str, Any]:
         'cost_value',
         'inventory_value',
         'gross_profit',
+        'avg_gross_profit',
         'margin_pct',
         'line_gross_profit',
     ):

@@ -46,6 +46,7 @@ const PRODUCT_SORTS = [
   { value: 'revenue', label: 'Revenue' },
   { value: 'quantity', label: 'Units sold' },
   { value: 'gross_profit', label: 'Gross profit' },
+  { value: 'avg_gross_profit', label: 'Avg gross profit / unit' },
   { value: 'margin_pct', label: 'Margin %' },
 ];
 
@@ -53,6 +54,7 @@ const PRODUCT_CHART_COLOURS = {
   quantity: CHART_SERIES[1],
   revenue: CHART_SERIES[0],
   gross_profit: CHART_SERIES[2] || CHART_SERIES[0],
+  avg_gross_profit: CHART_SERIES[3] || CHART_SERIES[2] || CHART_SERIES[0],
 };
 
 const Reports = () => {
@@ -691,6 +693,8 @@ const Reports = () => {
         quantity: Number(product.quantity_sold) || 0,
         revenue: Number(product.revenue) || 0,
         gross_profit: Number(product.gross_profit) || 0,
+        avg_gross_profit:
+          product.avg_gross_profit == null ? null : Number(product.avg_gross_profit),
         margin_pct: product.margin_pct == null ? null : Number(product.margin_pct),
       };
     });
@@ -706,7 +710,7 @@ const Reports = () => {
               <h3 className="m-0">Top {topProductLimit} products</h3>
               <p className="mt-1 text-sm text-muted-foreground">
                 {showProductProfitability
-                  ? 'Rank goods by profit or margin to see which earn more for the business.'
+                  ? 'Rank by total or average gross profit per unit to see which goods earn more.'
                   : 'How the best sellers performed in this period — change how many to show.'}
               </p>
             </div>
@@ -824,41 +828,81 @@ const Reports = () => {
                 </ResponsiveContainer>
               </div>
               {showProductProfitability ? (
-                <div data-testid="product-profit-chart">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Gross profit
-                  </p>
-                  <ResponsiveContainer width="100%" height={chartHeight}>
-                    <BarChart
-                      data={chartData}
-                      layout="vertical"
-                      margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
-                    >
-                      <XAxis
-                        type="number"
-                        tick={{ fontSize: 11 }}
-                        tickFormatter={(v) => formatCompactCurrency(v)}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        width={130}
-                        tick={{ fontSize: 11 }}
-                      />
-                      <Tooltip
-                        formatter={(value) => [formatCurrency(value), 'Gross profit']}
-                        labelFormatter={(_, payload) =>
-                          payload?.[0]?.payload?.fullName || ''
-                        }
-                      />
-                      <Bar
-                        dataKey="gross_profit"
-                        fill={PRODUCT_CHART_COLOURS.gross_profit}
-                        radius={[0, 4, 4, 0]}
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+                <>
+                  <div data-testid="product-profit-chart">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Gross profit
+                    </p>
+                    <ResponsiveContainer width="100%" height={chartHeight}>
+                      <BarChart
+                        data={chartData}
+                        layout="vertical"
+                        margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
+                      >
+                        <XAxis
+                          type="number"
+                          tick={{ fontSize: 11 }}
+                          tickFormatter={(v) => formatCompactCurrency(v)}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          width={130}
+                          tick={{ fontSize: 11 }}
+                        />
+                        <Tooltip
+                          formatter={(value) => [formatCurrency(value), 'Gross profit']}
+                          labelFormatter={(_, payload) =>
+                            payload?.[0]?.payload?.fullName || ''
+                          }
+                        />
+                        <Bar
+                          dataKey="gross_profit"
+                          fill={PRODUCT_CHART_COLOURS.gross_profit}
+                          radius={[0, 4, 4, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div data-testid="product-avg-profit-chart">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Avg gross profit / unit
+                    </p>
+                    <ResponsiveContainer width="100%" height={chartHeight}>
+                      <BarChart
+                        data={chartData}
+                        layout="vertical"
+                        margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
+                      >
+                        <XAxis
+                          type="number"
+                          tick={{ fontSize: 11 }}
+                          tickFormatter={(v) => formatCompactCurrency(v)}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          width={130}
+                          tick={{ fontSize: 11 }}
+                        />
+                        <Tooltip
+                          formatter={(value) => [
+                            formatCurrency(value ?? 0),
+                            'Avg gross profit / unit',
+                          ]}
+                          labelFormatter={(_, payload) =>
+                            payload?.[0]?.payload?.fullName || ''
+                          }
+                        />
+                        <Bar
+                          dataKey="avg_gross_profit"
+                          fill={PRODUCT_CHART_COLOURS.avg_gross_profit}
+                          radius={[0, 4, 4, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </>
               ) : null}
             </div>
           ) : (
@@ -888,6 +932,7 @@ const Reports = () => {
                       <>
                         <th>COGS</th>
                         <th>Gross profit</th>
+                        <th>Avg GP / unit</th>
                         <th>Margin %</th>
                       </>
                     ) : null}
@@ -907,6 +952,11 @@ const Reports = () => {
                         <>
                           <td>{formatCurrency(product.cogs || 0)}</td>
                           <td>{formatCurrency(product.gross_profit || 0)}</td>
+                          <td>
+                            {product.avg_gross_profit == null
+                              ? '—'
+                              : formatCurrency(product.avg_gross_profit)}
+                          </td>
                           <td>
                             {product.margin_pct == null
                               ? '—'

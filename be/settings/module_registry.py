@@ -436,7 +436,7 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f(
                 'product_profitability',
                 'Product profitability',
-                'Rank goods by gross profit and margin % (which SKUs earn more).',
+                'Rank goods by total or average gross profit per unit and margin %.',
                 4,
             ),
             _f('inventory_reports', 'Inventory reports', '', 5),
@@ -545,6 +545,12 @@ MODULE_DEFINITIONS: list[dict[str, Any]] = [
             _f('module_settings', 'Module settings', '', 4),
             _f('system_configuration', 'Store configuration', '', 5),
             _f('multi_branch_support', 'Multi-branch', 'Branch selector in header.', 6, enabled=False),
+            _f(
+                'audit_sensitive_reads',
+                'Audit record opens',
+                'Log when staff open customer, sale, invoice, employee, and similar detail pages (not lists).',
+                7,
+            ),
         ],
     },
 ]
@@ -603,6 +609,7 @@ PRESETS: dict[str, dict[str, Any]] = {
                 'role_management',
                 'permission_management',
                 'module_settings',
+                'audit_sensitive_reads',
             ],
         },
         'disable_unlisted': True,

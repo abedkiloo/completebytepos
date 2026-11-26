@@ -69,7 +69,7 @@ const ALL_REPORTS = [
     icon: '📋',
     hasDetail: true,
     description:
-      'Units, revenue, and profitability margin per good — rank which SKUs earn more',
+      'Units, revenue, total and average gross profit per unit — rank which SKUs earn more',
   },
   {
     id: 'product-performance',

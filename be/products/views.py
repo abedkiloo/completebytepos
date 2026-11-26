@@ -72,6 +72,8 @@ class SizeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = SizeSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'product_sizes'
+    # Catalog churn — do not audit every size detail open.
+    audit_reads = False
     # Sizes are a small option catalog; paginating hid newly added rows from
     # the product form and Sizes & colors screen (same as categories).
     pagination_class = None
@@ -99,6 +101,7 @@ class UnitOfMeasureViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = UnitOfMeasureSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'product_units'
+    audit_reads = False
     ordering = ['display_order', 'label']
     pagination_class = None
 
@@ -127,6 +130,7 @@ class ColorViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ColorSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'product_colors'
+    audit_reads = False
     # Colors are a small option catalog; paginating hid newly added rows from
     # the product form and Sizes & colors screen (same as categories).
     pagination_class = None
@@ -153,6 +157,7 @@ class ProductVariantViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ProductVariantSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'product_variants'
+    audit_reads = False
     filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['sku', 'barcode', 'product__name']
     ordering_fields = ['product', 'size', 'color', 'sku']
@@ -270,6 +275,7 @@ class CategoryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticated, CATEGORIES_PERMS]
     audit_module = 'categories'
+    audit_reads = False
     # Categories are a small tree; paginating hid rows from the FE client-side search.
     pagination_class = None
     filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
@@ -389,6 +395,8 @@ class ProductViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated, PRODUCTS_PERMS]
     audit_module = 'products'
+    # POS opens product detail often — skip view spam; writes still audited.
+    audit_reads = False
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [filters.SearchFilter, NameSavedOrderingFilter]
     search_fields = ['name', 'sku', 'barcode', 'description', 'supplier__name', 'category__name']

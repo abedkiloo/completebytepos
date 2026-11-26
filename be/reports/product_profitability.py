@@ -1,9 +1,9 @@
 """
 Per-SKU profitability ranking for product reports.
 
-Builds quantity, revenue, COGS, gross profit, and margin % from stamped
-sale-line costs, then ranks by the requested sort key so managers can see
-which goods contribute the most profit.
+Builds quantity, revenue, COGS, gross profit, average gross profit per unit,
+and margin % from stamped sale-line costs, then ranks by the requested sort
+key so managers can see which goods contribute the most profit.
 """
 
 from __future__ import annotations
@@ -13,7 +13,13 @@ from typing import Any, Iterable
 from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum, Value
 from django.db.models.functions import Coalesce
 
-VALID_SORTS = frozenset({'revenue', 'quantity', 'gross_profit', 'margin_pct'})
+VALID_SORTS = frozenset({
+    'revenue',
+    'quantity',
+    'gross_profit',
+    'avg_gross_profit',
+    'margin_pct',
+})
 DEFAULT_SORT = 'revenue'
 
 
@@ -26,13 +32,23 @@ def normalize_product_sort(raw: str | None, *, default: str = DEFAULT_SORT) -> s
         default: Fallback when raw is empty/unknown. One of VALID_SORTS.
 
     Returns:
-        One of ``revenue``, ``quantity``, ``gross_profit``, ``margin_pct``.
+        One of ``revenue``, ``quantity``, ``gross_profit``, ``avg_gross_profit``,
+        ``margin_pct``.
     """
     key = (raw or '').strip().lower()
     if key in ('qty', 'units', 'quantity_sold'):
         key = 'quantity'
     if key in ('profit', 'gp', 'gross'):
         key = 'gross_profit'
+    if key in (
+        'avg_profit',
+        'avg_gp',
+        'average_gross_profit',
+        'avg_gross',
+        'unit_profit',
+        'profit_per_unit',
+    ):
+        key = 'avg_gross_profit'
     if key in ('margin', 'margin_percent', 'margin%'):
         key = 'margin_pct'
     if key in VALID_SORTS:
@@ -97,7 +113,8 @@ def row_from_aggregate(row: dict[str, Any], *, hub_keys: bool = False) -> dict[s
             (``product_id``, ``name``, …).
 
     Returns:
-        Dict with quantity, revenue, cogs, gross_profit, margin_pct (0–100 or None).
+        Dict with quantity, revenue, cogs, gross_profit, avg_gross_profit
+        (GP per unit sold), margin_pct (0–100 or None).
     """
     qty = float(row.get('quantity_sold') or 0)
     revenue = float(row.get('revenue') or 0)
@@ -105,6 +122,8 @@ def row_from_aggregate(row: dict[str, Any], *, hub_keys: bool = False) -> dict[s
     gp = round(revenue - cogs, 2)
     margin = margin_pct(revenue, cogs)
     avg_unit_cost = round(cogs / qty, 4) if qty else None
+    # Average gross profit per unit sold — compares SKUs on profit density.
+    avg_gross_profit = round(gp / qty, 4) if qty else None
     if hub_keys:
         return {
             'product_id': row.get('product__id'),
@@ -117,6 +136,7 @@ def row_from_aggregate(row: dict[str, Any], *, hub_keys: bool = False) -> dict[s
             'cogs': cogs,
             'avg_unit_cost': avg_unit_cost,
             'gross_profit': gp,
+            'avg_gross_profit': avg_gross_profit,
             'margin_pct': margin,
         }
     return {
@@ -130,6 +150,7 @@ def row_from_aggregate(row: dict[str, Any], *, hub_keys: bool = False) -> dict[s
         'cogs': cogs,
         'avg_unit_cost': avg_unit_cost,
         'gross_profit': gp,
+        'avg_gross_profit': avg_gross_profit,
         'margin_pct': margin,
         'line_count': int(row.get('line_count') or 0),
     }
@@ -142,7 +163,7 @@ def sort_product_rows(
     descending: bool = True,
 ) -> list[dict[str, Any]]:
     """
-    Rank product rows by revenue, units, gross profit, or margin %.
+    Rank product rows by revenue, units, gross profit, avg GP/unit, or margin %.
 
     Args:
         rows: Product profitability rows (iterable, 0–100_000 typical).
@@ -150,7 +171,7 @@ def sort_product_rows(
         descending: Highest-first when True (default for “which earns more”).
 
     Returns:
-        New sorted list. Margin None sorts last when descending.
+        New sorted list. Margin / avg GP None sorts last when descending.
     """
     key = normalize_product_sort(sort)
 
@@ -159,6 +180,11 @@ def sort_product_rows(
             return float(row.get('quantity_sold') or 0)
         if key == 'gross_profit':
             return float(row.get('gross_profit') or 0)
+        if key == 'avg_gross_profit':
+            avg = row.get('avg_gross_profit')
+            if avg is None:
+                return float('-inf') if descending else float('inf')
+            return float(avg)
         if key == 'margin_pct':
             m = row.get('margin_pct')
             if m is None:
@@ -181,7 +207,8 @@ def build_product_profitability_rows(
 
     Args:
         queryset: Scoped ``SaleItem`` queryset.
-        sort: Ranking key (revenue / quantity / gross_profit / margin_pct).
+        sort: Ranking key (revenue / quantity / gross_profit /
+            avg_gross_profit / margin_pct).
         limit: When set (1–50 typical), return only the top N after sort.
         hub_keys: Use top_products field naming.
 

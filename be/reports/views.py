@@ -294,8 +294,9 @@ class ReportViewSet(viewsets.ViewSet):
 
         Full ranked list in ``products``. ``top`` is the first ``limit`` rows
         (default 10, max 50) for charts. Query ``sort`` =
-        ``revenue`` (default) | ``quantity`` | ``gross_profit`` | ``margin_pct``
-        ranks which goods earned more for the business.
+        ``revenue`` (default) | ``quantity`` | ``gross_profit`` |
+        ``avg_gross_profit`` | ``margin_pct`` ranks which goods earned more
+        (total GP or average GP per unit sold).
         """
         date_from, date_to = request_date_bounds(request)
 
@@ -1004,7 +1005,8 @@ class ReportViewSet(viewsets.ViewSet):
         """Best-selling / most profitable products in the chosen period.
 
         Returns top N (default 10, max 50 via ``limit``). Query ``sort`` =
-        ``quantity`` (default) | ``revenue`` | ``gross_profit`` | ``margin_pct``.
+        ``quantity`` (default) | ``revenue`` | ``gross_profit`` |
+        ``avg_gross_profit`` | ``margin_pct``.
         """
         start, end, label = resolve_period(request)
         limit = _parse_top_limit(request.query_params.get('limit'), default=10)

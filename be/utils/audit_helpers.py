@@ -230,3 +230,102 @@ def safe_serializer_data(serializer: serializers.BaseSerializer) -> dict:
         return dict(serializer.data)
     except Exception:
         return {}
+
+
+def audit_reads_enabled() -> bool:
+    """
+    Whether sensitive detail opens should write ``view`` audit rows.
+
+    Returns:
+        True when package feature ``settings.audit_sensitive_reads`` is on
+        (default True when the feature row is missing — registry default).
+    """
+    try:
+        from settings.module_features import is_module_feature_enabled
+
+        return bool(is_module_feature_enabled('settings', 'audit_sensitive_reads'))
+    except Exception:
+        return True
+
+
+def log_sensitive_read(
+    request,
+    instance: Model | None,
+    *,
+    module: str = '',
+    purpose: str = 'detail',
+    dedupe_seconds: int = 300,
+) -> None:
+    """
+    Append a ``view`` audit row for opening a sensitive record (not lists).
+
+    Args:
+        request: Authenticated DRF request (anonymous ignored).
+        instance: Model instance being opened, or None.
+        module: Permission module override (0–32 chars). Empty uses app label.
+        purpose: Short reason stored in ``changes`` (1–40 chars), e.g. ``detail``.
+        dedupe_seconds: Skip duplicate view of same object by same user within
+            this window (30–3600; default 300). Uses LocMem/Redis cache.
+
+    Returns:
+        None. Never raises; never logs response bodies, phones, or secrets.
+
+    Side effects:
+        Zero or one ``AuditLog`` row with ``action='view'``.
+    """
+    if request is None:
+        return
+    user = getattr(request, 'user', None)
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return
+    if not audit_reads_enabled():
+        return
+
+    from accounts.models import AuditLog
+
+    purpose_key = (purpose or 'detail').strip()[:40] or 'detail'
+    ttl = max(30, min(3600, int(dedupe_seconds or 300)))
+    object_type = ''
+    object_id = ''
+    if instance is not None:
+        meta = instance._meta
+        object_type = f'{meta.app_label}.{meta.object_name}'
+        pk = getattr(instance, 'pk', None)
+        object_id = '' if pk is None else str(pk)[:64]
+
+    cache_key = (
+        f'audit_view:{getattr(user, "pk", 0)}:{module}:{object_type}:{object_id}:{purpose_key}'
+    )[:220]
+    try:
+        from django.core.cache import cache
+
+        if cache.get(cache_key):
+            return
+        cache.set(cache_key, 1, ttl)
+    except Exception:
+        pass
+
+    log_audit(
+        request,
+        AuditLog.ACTION_VIEW,
+        instance,
+        module=module or _module_for_request(request, instance),
+        changes={'purpose': purpose_key, 'kind': 'read'},
+        object_repr=(str(instance)[:255] if instance is not None else None),
+    )
+
+
+def _module_for_request(request, instance: Model | None) -> str:
+    """
+    Best-effort module string when the view did not pass one.
+
+    Args:
+        request: Unused except for future view binding; may be None.
+        instance: Optional model for app_label.
+
+    Returns:
+        App label or empty string.
+    """
+    if instance is not None:
+        return instance._meta.app_label
+    return ''

@@ -421,16 +421,47 @@ class AuditLogSerializer(serializers.ModelSerializer):
     """Read-only serializer for AuditLog entries shown in admin/security UIs."""
 
     user_username = serializers.CharField(source='user.username', read_only=True, default=None)
+    action_display = serializers.SerializerMethodField()
+    module_display = serializers.SerializerMethodField()
 
     class Meta:
         model = AuditLog
         fields = [
             'id', 'user', 'user_username', 'username_snapshot', 'action',
-            'module', 'object_type', 'object_id', 'object_repr', 'changes',
+            'action_display', 'module', 'module_display', 'object_type',
+            'object_id', 'object_repr', 'changes',
             'ip_address', 'user_agent', 'client_channel', 'path', 'method',
             'created_at',
         ]
         read_only_fields = fields
+
+    def get_action_display(self, obj) -> str:
+        """
+        People-facing action name (never a bare number).
+
+        Args:
+            obj: ``AuditLog`` row.
+
+        Returns:
+            Label from ``utils.audit_labels.action_display_label`` (1–80 chars).
+        """
+        from utils.audit_labels import action_display_label
+
+        return action_display_label(getattr(obj, 'action', None))
+
+    def get_module_display(self, obj) -> str:
+        """
+        People-facing module name.
+
+        Args:
+            obj: ``AuditLog`` row.
+
+        Returns:
+            Label from ``utils.audit_labels.module_display_label``.
+        """
+        from utils.audit_labels import module_display_label
+
+        return module_display_label(getattr(obj, 'module', None))
 
 
 # Module settings serializers moved to settings app

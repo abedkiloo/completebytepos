@@ -22,18 +22,30 @@ import { userMayEditFinancialFieldsFromStorage } from '../../utils/roleAccess';
 import { Navigate } from 'react-router-dom';
 import { cn } from '../../lib/cn';
 
+/** Prefer API ``action_display``; this map covers older payloads and filters. */
 const ACTION_LABELS = {
   create: 'Created',
   update: 'Updated',
   delete: 'Deleted',
+  view: 'Opened / viewed',
+  read: 'Opened / viewed',
   login: 'Signed in',
   logout: 'Signed out',
   login_failed: 'Failed sign-in',
   permission_denied: 'Permission denied',
+  change_password: 'Password changed',
+  assign_role: 'Role assigned',
+  assign_permissions: 'Permissions assigned',
+  apply_preset: 'Settings preset applied',
   checkout: 'Sale money posted',
   sale_completed: 'Sale money posted',
   debt_settlement_posted: 'Debt money posted',
+  debt_settlement_corrected: 'Debt settlement corrected',
+  debt_settlement_transferred: 'Debt settlement transferred',
+  sale_staff_transferred: 'Sale staff transferred',
+  sale_customer_transferred: 'Sale customer transferred',
   holding_save: 'Saved holding',
+  holding_cancel: 'Cancelled holding',
   stock_adjust: 'Stock adjust',
   stock_purchase: 'Stock purchase',
   stock_transfer: 'Stock transfer',
@@ -46,6 +58,9 @@ const ACTION_LABELS = {
   pending_resubmit: 'Resubmitted for approval',
   refund: 'Refund',
   rollback: 'Rollback',
+  uncancel: 'Sale uncancelled',
+  unvoid: 'Sale unvoided',
+  sale_discarded: 'Sale discarded',
   pack: 'Packed field order',
   assign: 'Assigned delivery',
   create_driver: 'Created driver',
@@ -67,6 +82,18 @@ const ACTION_LABELS = {
   payroll_run_locked: 'Payroll locked',
   payroll_run_rejected: 'Payroll rejected',
   payroll_run_cancelled: 'Payroll cancelled',
+  expense_claim_filed: 'Expense claim filed',
+  expense_claim_decided: 'Expense claim decided',
+  expense_resubmitted: 'Expense resubmitted',
+  expense_voided: 'Expense voided',
+  expense_redo: 'Expense redo',
+  expense_updated: 'Expense updated',
+  call_marked: 'Call marked',
+  call_updated: 'Call updated',
+  call_held: 'Call held',
+  call_plan_saved: 'Call plan saved',
+  note_review_requested: 'Note review requested',
+  note_review_completed: 'Note review completed',
 };
 
 const LIFECYCLE_LABELS = {
@@ -414,8 +441,17 @@ export function summarizeAuditChanges(changes, maxItems = 4) {
   return extra > 0 ? `${parts.join(' · ')} · +${extra} more` : parts.join(' · ');
 }
 
-function actionLabel(action) {
+/**
+ * People-facing action name. Prefer API ``action_display`` so new verbs stay named.
+ *
+ * @param {string|null|undefined} action Raw verb.
+ * @param {string|null|undefined} [actionDisplay] Server label when present.
+ * @returns {string}
+ */
+function actionLabel(action, actionDisplay) {
+  if (actionDisplay && String(actionDisplay).trim()) return String(actionDisplay).trim();
   if (!action) return '—';
+  if (/^\d+$/.test(String(action))) return `Action ${action}`;
   return ACTION_LABELS[action] || humanFieldName(action);
 }
 
@@ -917,7 +953,7 @@ export default function AuditLogPage() {
                       }}
                       tabIndex={0}
                       role="button"
-                      aria-label={`Open audit detail for ${actionLabel(row.action)}`}
+                      aria-label={`Open audit detail for ${actionLabel(row.action, row.action_display)}`}
                     >
                       <td className="py-2 pr-3 whitespace-nowrap tabular-nums">
                         {formatDateTime(row.created_at)}
@@ -927,7 +963,9 @@ export default function AuditLogPage() {
                         <div className="text-xs text-muted-foreground">{channelLabel}</div>
                       </td>
                       <td className="py-2 pr-3">
-                        <Badge variant="outline">{actionLabel(row.action)}</Badge>
+                        <Badge variant="outline">
+                          {actionLabel(row.action, row.action_display)}
+                        </Badge>
                       </td>
                       <td className="py-2 pr-3 max-w-[28rem]">
                         <div className="truncate font-medium" title={row.object_repr}>
@@ -1010,13 +1048,22 @@ export default function AuditLogPage() {
                 <div>
                   <dt className="text-xs font-medium text-muted-foreground">Action</dt>
                   <dd className="text-sm">
-                    <Badge variant="outline">{actionLabel(detail.action)}</Badge>
-                    <span className="ml-2 text-xs text-muted-foreground">({detail.action})</span>
+                    <Badge variant="outline">
+                      {actionLabel(detail.action, detail.action_display)}
+                    </Badge>
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      code: {detail.action || '—'}
+                    </span>
                   </dd>
                 </div>
                 <div>
                   <dt className="text-xs font-medium text-muted-foreground">Module</dt>
-                  <dd className="text-sm">{humanModuleName(detail.module) || detail.module || '—'}</dd>
+                  <dd className="text-sm">
+                    {detail.module_display ||
+                      humanModuleName(detail.module) ||
+                      detail.module ||
+                      '—'}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs font-medium text-muted-foreground">Client</dt>

@@ -316,6 +316,7 @@ class AuditLog(models.Model):
     ACTION_CREATE = 'create'
     ACTION_UPDATE = 'update'
     ACTION_DELETE = 'delete'
+    ACTION_VIEW = 'view'
     ACTION_LOGIN = 'login'
     ACTION_LOGOUT = 'logout'
     ACTION_LOGIN_FAILED = 'login_failed'

@@ -289,6 +289,7 @@ function TopProductsTile({ period, onOpen, showProfitability }) {
         quantity: row.quantity_sold,
         revenue: row.revenue,
         gross_profit: row.gross_profit,
+        avg_gross_profit: row.avg_gross_profit,
         margin_pct: row.margin_pct,
       })),
     [items]
@@ -297,11 +298,13 @@ function TopProductsTile({ period, onOpen, showProfitability }) {
   const barKey =
     sort === 'gross_profit'
       ? 'gross_profit'
-      : sort === 'revenue'
-        ? 'revenue'
-        : sort === 'margin_pct'
-          ? 'margin_pct'
-          : 'quantity';
+      : sort === 'avg_gross_profit'
+        ? 'avg_gross_profit'
+        : sort === 'revenue'
+          ? 'revenue'
+          : sort === 'margin_pct'
+            ? 'margin_pct'
+            : 'quantity';
 
   return (
     <ReportCard
@@ -309,7 +312,7 @@ function TopProductsTile({ period, onOpen, showProfitability }) {
       title="Top products"
       description={
         showProfitability
-          ? 'Rank SKUs by profit or margin to see which goods earn more.'
+          ? 'Rank SKUs by total or average gross profit per unit.'
           : 'Best-selling SKUs by quantity moved — change how many to show.'
       }
       onOpen={onOpen}
@@ -331,6 +334,7 @@ function TopProductsTile({ period, onOpen, showProfitability }) {
               onChange={(e) => setSort(e.target.value)}
             >
               <option value="gross_profit">Gross profit</option>
+              <option value="avg_gross_profit">Avg GP / unit</option>
               <option value="margin_pct">Margin %</option>
               <option value="revenue">Revenue</option>
               <option value="quantity">Units sold</option>
@@ -381,11 +385,18 @@ function TopProductsTile({ period, onOpen, showProfitability }) {
               />
               <Tooltip
                 formatter={(value, name) => {
-                  if (name === 'revenue' || name === 'gross_profit') {
-                    return [
-                      formatCurrency(value),
-                      name === 'gross_profit' ? 'Gross profit' : 'Revenue',
-                    ];
+                  if (
+                    name === 'revenue' ||
+                    name === 'gross_profit' ||
+                    name === 'avg_gross_profit'
+                  ) {
+                    const label =
+                      name === 'gross_profit'
+                        ? 'Gross profit'
+                        : name === 'avg_gross_profit'
+                          ? 'Avg GP / unit'
+                          : 'Revenue';
+                    return [formatCurrency(value ?? 0), label];
                   }
                   if (name === 'margin_pct') {
                     return [`${formatNumber(value)}%`, 'Margin'];
@@ -411,7 +422,11 @@ function TopProductsTile({ period, onOpen, showProfitability }) {
                 <span className="truncate text-foreground">{row.name}</span>
                 <span className="ml-2 font-medium text-muted-foreground">
                   {showProfitability
-                    ? `${formatCompactCurrency(row.gross_profit)} · ${
+                    ? `${formatCompactCurrency(row.gross_profit)} · avg ${
+                        row.avg_gross_profit == null
+                          ? '—'
+                          : formatCompactCurrency(row.avg_gross_profit)
+                      } · ${
                         row.margin_pct == null ? '—' : `${formatNumber(row.margin_pct)}%`
                       }`
                     : `${formatNumber(row.quantity_sold)} · ${formatCompactCurrency(row.revenue)}`}

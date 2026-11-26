@@ -38,7 +38,7 @@ from accounts.password_policy import (
 from settings.models import ModuleSettings, ModuleFeature
 from settings.module_catalog import get_enabled_modules_flat
 from utils.audit_helpers import audited_perform_create, audited_perform_destroy, audited_perform_update, log_domain_event
-from utils.audit_mixin import AuditedModelViewSetMixin
+from utils.audit_mixin import AuditedModelViewSetMixin, AuditedRetrieveMixin
 
 
 def _user_can_manage_permissions(user) -> bool:
@@ -389,11 +389,13 @@ class RoleViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         })
 
 
-class UserViewSet(viewsets.ModelViewSet):
-    """Manage users with role-based permissions"""
+class UserViewSet(AuditedRetrieveMixin, viewsets.ModelViewSet):
+    """Manage users with role-based permissions (writes audited manually)."""
     queryset = User.objects.all().select_related('profile', 'profile__custom_role').prefetch_related('profile__custom_role__permissions')
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
+    audit_module = 'users'
+    audit_reads = True
     ordering = ['username']
 
     @staticmethod

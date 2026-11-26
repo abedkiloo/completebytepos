@@ -30,6 +30,8 @@ from utils.tests.api_test_base import SuperAdminAPITestCase
 class ProductProfitabilityUnitTests(SuperAdminAPITestCase):
     def test_normalize_sort_aliases(self):
         self.assertEqual(normalize_product_sort('profit'), 'gross_profit')
+        self.assertEqual(normalize_product_sort('avg_profit'), 'avg_gross_profit')
+        self.assertEqual(normalize_product_sort('unit_profit'), 'avg_gross_profit')
         self.assertEqual(normalize_product_sort('margin'), 'margin_pct')
         self.assertEqual(normalize_product_sort('qty'), 'quantity')
         self.assertEqual(normalize_product_sort('nope'), 'revenue')
@@ -45,6 +47,28 @@ class ProductProfitabilityUnitTests(SuperAdminAPITestCase):
         ]
         ranked = sort_product_rows(rows, 'gross_profit')
         self.assertEqual([r['name'] for r in ranked], ['B', 'A'])
+
+    def test_sort_rows_by_avg_gross_profit(self):
+        rows = [
+            {
+                'name': 'Bulk',
+                'gross_profit': 40,
+                'avg_gross_profit': 5.0,
+                'margin_pct': 10,
+                'revenue': 400,
+                'quantity_sold': 8,
+            },
+            {
+                'name': 'Premium',
+                'gross_profit': 160,
+                'avg_gross_profit': 80.0,
+                'margin_pct': 80,
+                'revenue': 200,
+                'quantity_sold': 2,
+            },
+        ]
+        ranked = sort_product_rows(rows, 'avg_gross_profit')
+        self.assertEqual([r['name'] for r in ranked], ['Premium', 'Bulk'])
 
 
 class ProductProfitabilityCorrectedTests(SuperAdminAPITestCase):
@@ -113,9 +137,11 @@ class ProductProfitabilityCorrectedTests(SuperAdminAPITestCase):
         self.assertEqual(sort_key, 'gross_profit')
         self.assertEqual(rows[0]['product_id'], self.high_profit.id)
         self.assertEqual(rows[0]['gross_profit'], 160.0)
+        self.assertEqual(rows[0]['avg_gross_profit'], 80.0)
         self.assertEqual(rows[0]['margin_pct'], 80.0)
         self.assertEqual(rows[1]['product_id'], self.high_volume.id)
         self.assertEqual(rows[1]['gross_profit'], 40.0)
+        self.assertEqual(rows[1]['avg_gross_profit'], 5.0)
 
     def test_api_products_sort_gross_profit(self):
         resp = self.client.get(
@@ -128,6 +154,18 @@ class ProductProfitabilityCorrectedTests(SuperAdminAPITestCase):
         self.assertGreaterEqual(len(top), 2)
         self.assertEqual(top[0]['product__id'], self.high_profit.id)
         self.assertIn('margin_pct', top[0])
+        self.assertIn('avg_gross_profit', top[0])
+
+    def test_api_products_sort_avg_gross_profit(self):
+        resp = self.client.get(
+            '/api/reports/products/',
+            {'sort': 'avg_gross_profit', 'limit': 10},
+        )
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        self.assertEqual(resp.data['sort'], 'avg_gross_profit')
+        top = resp.data['top']
+        self.assertEqual(top[0]['product__id'], self.high_profit.id)
+        self.assertEqual(top[0]['avg_gross_profit'], 80.0)
 
     def test_api_top_products_sort_gross_profit(self):
         resp = self.client.get(
@@ -137,6 +175,7 @@ class ProductProfitabilityCorrectedTests(SuperAdminAPITestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
         self.assertEqual(resp.data['sort'], 'gross_profit')
         self.assertEqual(resp.data['items'][0]['product_id'], self.high_profit.id)
+        self.assertEqual(resp.data['items'][0]['avg_gross_profit'], 80.0)
 
 
 class ProductProfitabilityModuleTests(SuperAdminAPITestCase):
@@ -166,6 +205,7 @@ class ProductProfitabilityStressTests(SuperAdminAPITestCase):
             {
                 'name': f'P{i}',
                 'gross_profit': float(i % 17),
+                'avg_gross_profit': float((i % 17) / max(i, 1)),
                 'margin_pct': float((i * 3) % 100),
                 'revenue': float(i + 1),
                 'quantity_sold': i,
@@ -176,9 +216,31 @@ class ProductProfitabilityStressTests(SuperAdminAPITestCase):
         self.assertEqual(len(ranked), 300)
         profits = [r['gross_profit'] for r in ranked]
         self.assertEqual(profits, sorted(profits, reverse=True))
+        by_avg = sort_product_rows(rows, 'avg_gross_profit')
+        avgs = [r['avg_gross_profit'] for r in by_avg]
+        self.assertEqual(avgs, sorted(avgs, reverse=True))
 
 
 class ProductProfitabilitySecurityTests(SuperAdminAPITestCase):
+    def test_strip_removes_avg_gross_profit(self):
+        from reports.export_product_cost import strip_product_cost_fields
+
+        stripped = strip_product_cost_fields(
+            {
+                'name': 'X',
+                'revenue': 100,
+                'cogs': 40,
+                'gross_profit': 60,
+                'avg_gross_profit': 30,
+                'margin_pct': 60,
+            }
+        )
+        self.assertNotIn('avg_gross_profit', stripped)
+        self.assertNotIn('gross_profit', stripped)
+        self.assertNotIn('cogs', stripped)
+        self.assertEqual(stripped['revenue'], 100)
+        self.assertNotIn('password', str(stripped).lower())
+
     def setUp(self):
         super().setUp()
         ensure_permissions()
