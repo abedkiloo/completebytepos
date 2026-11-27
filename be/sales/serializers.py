@@ -1236,31 +1236,13 @@ class SaleCreateSerializer(serializers.Serializer):
             Normalized attrs dict from the parent serializer.
 
         Raises:
-            ValidationError: When ``items`` is a non-JSON string.
+            ValidationError: When ``items`` is a non-JSON string or not a list.
         """
-        import json
+        from sales.multipart_payload import parse_json_items_field
 
-        if hasattr(data, 'copy'):
-            mutable = data.copy()
-        elif isinstance(data, dict):
-            mutable = dict(data)
-        else:
-            mutable = data
-        items = None
-        if hasattr(mutable, 'get'):
-            items = mutable.get('items')
-        if isinstance(items, str):
-            try:
-                parsed = json.loads(items)
-            except json.JSONDecodeError as exc:
-                raise serializers.ValidationError(
-                    {'items': 'Invalid items payload.'}
-                ) from exc
-            if hasattr(mutable, 'setlist') and hasattr(mutable, '__setitem__'):
-                mutable['items'] = parsed
-            elif isinstance(mutable, dict):
-                mutable['items'] = parsed
-        return super().to_internal_value(mutable)
+        # Must use a plain dict — assigning a list onto QueryDict makes
+        # ListField+getlist see [[...]] and reject each line as "not a dict".
+        return super().to_internal_value(parse_json_items_field(data))
 
     def validate_customer_phone(self, value):
         from utils.phone import validate_optional_phone

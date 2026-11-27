@@ -42,12 +42,9 @@ logger = logging.getLogger(__name__)
 
 def _parse_backfill_request_data(request):
     """Normalize JSON or multipart backfill payloads."""
-    import json
+    from sales.multipart_payload import parse_json_items_field
 
-    data = dict(request.data)
-    items = data.get('items')
-    if isinstance(items, str):
-        data['items'] = json.loads(items)
+    data = parse_json_items_field(request.data)
     for key in ('customer_id', 'served_by_id'):
         if key in data and data[key] in ('', None, 'null'):
             data[key] = None
