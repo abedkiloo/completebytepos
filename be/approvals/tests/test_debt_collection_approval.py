@@ -189,6 +189,7 @@ class DebtCollectionApprovalAPITests(SalesAPITestCase):
                 {
                     'amount': '50.00',
                     'payment_method': 'mpesa',
+                    'mpesa_destination': 'till',
                     'reference': 'QHX7K2L9M1',
                     'receipt_image': receipt,
                 },

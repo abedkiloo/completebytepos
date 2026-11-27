@@ -117,14 +117,19 @@ def redact_cost_fields(data, *, request=None):
     Returns:
         The same shape, without cost, margin, profit, and stock-value
         keys when the person may not see them. ``delivery_cost`` stays.
-        No writes.
+        ``pending_approval`` (including ``proposed_values.cost``) is kept so
+        a maker can see the cost change they just queued. No writes.
 
     Raises:
         None.
     """
     if request is None or user_may_see_cost(getattr(request, 'user', None)):
         return data
-    return _drop_keys(data, COST_RESPONSE_KEYS)
+    return _drop_keys(
+        data,
+        COST_RESPONSE_KEYS,
+        preserve_under=frozenset({'pending_approval'}),
+    )
 
 
 def redact_operational_secrets(data, *, request=None):
@@ -152,13 +157,33 @@ def redact_operational_secrets(data, *, request=None):
     return _drop_keys(data, MANAGEMENT_ONLY_KEYS)
 
 
-def _drop_keys(value, keys):
+def _drop_keys(value, keys, *, preserve_under: frozenset[str] | None = None):
+    """
+    Recursively remove ``keys`` from dict trees.
+
+    Args:
+        value: Dict, list, or scalar payload fragment.
+        keys: Field names to drop (0–64 names typical for cost redaction).
+        preserve_under: Top-level map keys whose nested trees are left intact
+            (e.g. ``pending_approval``). None means drop everywhere.
+
+    Returns:
+        The same shape with matching keys removed outside preserved subtrees.
+
+    Raises:
+        None.
+    """
+    preserve = preserve_under or frozenset()
     if isinstance(value, dict):
-        return {
-            key: _drop_keys(item, keys)
-            for key, item in value.items()
-            if key not in keys
-        }
+        out = {}
+        for key, item in value.items():
+            if key in keys:
+                continue
+            if key in preserve:
+                out[key] = item
+            else:
+                out[key] = _drop_keys(item, keys, preserve_under=preserve_under)
+        return out
     if isinstance(value, list):
-        return [_drop_keys(item, keys) for item in value]
+        return [_drop_keys(item, keys, preserve_under=preserve_under) for item in value]
     return value

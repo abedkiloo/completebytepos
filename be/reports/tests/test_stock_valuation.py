@@ -140,9 +140,15 @@ class StockValuationReportTests(ManagerAPITestCase):
         super().setUp()
         from django.core.cache import cache
 
+        from accounts.models import Permission
+
         cache.clear()
         SettingsService.set('reports', 'show_cost_and_profit', True)
         SettingsService.set('reports', 'enable_inventory_reports', True)
+        # Managers lack cost by default — grant profit so valuation amounts stay visible.
+        self.manager_role.permissions.add(
+            Permission.objects.get(module='reports', action='profit'),
+        )
 
     def test_json_lists_on_hand_stock_with_owner_and_values(self):
         response = self.client.get('/api/reports/stock_valuation/')

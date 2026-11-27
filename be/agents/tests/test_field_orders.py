@@ -73,7 +73,11 @@ class FieldOrderAPITestCase(APITestCase):
             custom_role=Role.objects.get(name=ROLE_SALES),
             is_active=True,
         )
-        cls.customer = Customer.objects.create(name='FO Cust', phone='0711')
+        cls.customer = Customer.objects.create(
+            name='FO Cust',
+            phone='0711',
+            created_by=cls.agent_user,
+        )
         cls.product = Product.objects.create(
             name='Cement', sku='CEM-1', price=500, cost=400, stock_quantity=1000,
         )

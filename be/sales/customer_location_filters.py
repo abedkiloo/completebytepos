@@ -157,11 +157,10 @@ def apply_customer_location_filters(
         canonical_sub = None
 
     if ward_raw:
-        if canonical_county and (canonical_sub or sub_raw):
-            sub_for_ward = canonical_sub or resolve_sub_county(canonical_county, sub_raw)
-            if not sub_for_ward:
-                return queryset.none()
-            canonical_ward = resolve_ward(canonical_county, sub_for_ward, ward_raw)
+        # ``canonical_sub`` is already validated when county+sub were supplied;
+        # otherwise fall through to the catalog-wide ward scan below.
+        if canonical_county and canonical_sub:
+            canonical_ward = resolve_ward(canonical_county, canonical_sub, ward_raw)
             if not canonical_ward:
                 return queryset.none()
             queryset = queryset.filter(ward__iexact=canonical_ward)

@@ -53,11 +53,17 @@ class CustomerSiteViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             customer: optional customer pk filter.
             status: optional site status filter.
         """
+        from django.db.models import Q
+
         from sales.visibility import user_limited_to_own_customers
 
         qs = super().get_queryset()
         if user_limited_to_own_customers(self.request.user):
-            qs = qs.filter(customer__created_by_id=self.request.user.pk)
+            # Own onboarded dukas, or draft pins the agent created before linking a customer.
+            qs = qs.filter(
+                Q(customer__created_by_id=self.request.user.pk)
+                | Q(created_by_id=self.request.user.pk)
+            )
         customer_id = self.request.query_params.get('customer')
         if customer_id:
             qs = qs.filter(customer_id=customer_id)

@@ -131,7 +131,19 @@ class HumanizeTests(SimpleTestCase):
             sales_export_filename('pdf', date_from='2026-10-09'),
             'sale-oct-9.pdf',
         )
+        self.assertEqual(
+            sales_export_filename('xlsx', date_to='2026-11-20'),
+            'sale-to-nov-20.xlsx',
+        )
         self.assertEqual(sales_export_filename('xlsx'), 'sale.xlsx')
+        self.assertEqual(
+            sales_export_filename('xlsx', date_from='2026-13-01'),
+            'sale.xlsx',
+        )
+        self.assertEqual(
+            sales_export_filename('xlsx', date_from='2026-10-00'),
+            'sale.xlsx',
+        )
 
 
 class FlattenPayloadTests(SimpleTestCase):
@@ -193,6 +205,20 @@ class RenderTests(SimpleTestCase):
         self.assertEqual(workbook.active['A2'].value, 'Sales Report')
         self.assertIn('0718515142', workbook.active['A3'].value)
         self.assertTrue(workbook.active._images)
+
+    def test_xlsx_raises_when_openpyxl_missing(self):
+        import sys
+
+        blocked = {
+            k: None
+            for k in list(sys.modules)
+            if k == 'openpyxl' or k.startswith('openpyxl.')
+        }
+        blocked['openpyxl'] = None
+        with patch.dict(sys.modules, blocked):
+            with self.assertRaises(RuntimeError) as ctx:
+                render_xlsx({'summary': {'total': 1}}, title='No XL')
+        self.assertIn('openpyxl', str(ctx.exception).lower())
 
     def test_xlsx_unique_sheet_names(self):
         payload = {

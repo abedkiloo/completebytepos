@@ -348,7 +348,16 @@ class CogsSalesExportUnitTests(ManagerAPITestCase):
                 'skip',
                 {'sale_number': 'S1', 'lines': ['bad', {'product_name': 'A', 'cost_missing': True}]},
             ],
-            'refunds': [],
+            'refunds': [
+                'skip-refund',
+                {
+                    'sale_number': 'R1',
+                    'created_at': '2026-11-04T09:00:00',
+                    'refund_amount': 5,
+                    'cogs_restored': 2,
+                    'lines': ['bad-line', {'product_name': 'A', 'quantity': 1, 'unit_cost': 2, 'line_cogs': 2}],
+                },
+            ],
             'truncated': True,
             'sale_count': 5,
         }
@@ -416,6 +425,19 @@ class CogsSalesExportUnitTests(ManagerAPITestCase):
         req.query_params = req.GET
         resp = maybe_export_sales_workbook(req, payload)
         self.assertEqual(resp['X-Export-Truncated'], '1')
+
+        import sys
+        from unittest.mock import patch
+
+        blocked = {
+            k: None
+            for k in list(sys.modules)
+            if k == 'openpyxl' or k.startswith('openpyxl.')
+        }
+        blocked['openpyxl'] = None
+        with patch.dict(sys.modules, blocked):
+            with self.assertRaises(RuntimeError):
+                render_sales_xlsx(payload)
 
     def test_history_export_feature_blocks_api(self):
         self._sale()

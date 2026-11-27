@@ -49,7 +49,11 @@ class AgentAPITestCase(APITestCase):
             custom_role=cls.sales_role,
             is_active=True,
         )
-        cls.customer = Customer.objects.create(name='Site Cust', phone='0700')
+        cls.customer = Customer.objects.create(
+            name='Site Cust',
+            phone='0700',
+            created_by=cls.agent_user,
+        )
 
     def setUp(self):
         token = RefreshToken.for_user(self.agent_user)

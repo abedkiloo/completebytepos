@@ -105,8 +105,6 @@ def extract_cogs_payload(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
         for key in ('period', 'date_from', 'date_to', 'title', 'formula', 'explanation'):
             if key not in merged and payload.get(key) is not None:
                 merged[key] = payload.get(key)
-        if 'explanation' not in merged and payload.get('explanation'):
-            merged['explanation'] = payload['explanation']
         return merged
     if 'cogs_sold' in payload and isinstance(payload.get('sales'), list):
         return payload

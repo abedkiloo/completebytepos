@@ -159,3 +159,79 @@ class PackageFeatureGateTests(ManagerAPITestCase):
             qs, {'county': DEFAULT_COUNTY, 'ward': DEFAULT_WARD}
         )
         self.assertGreaterEqual(with_county_ward.count(), 1)
+
+        # Unknown county → empty; location_status valid/invalid branches.
+        self.assertEqual(
+            apply_customer_location_filters(qs, {'county': 'NoSuchCountyXYZ'}).count(),
+            0,
+        )
+        Customer.objects.create(
+            name='Blank Loc',
+            phone='0700999002',
+            county='',
+            sub_county='',
+            ward='',
+        )
+        Customer.objects.create(
+            name='Bad Combo',
+            phone='0700999003',
+            county=DEFAULT_COUNTY,
+            sub_county='NotARealSub',
+            ward='NotARealWard',
+        )
+        invalid = apply_customer_location_filters(qs, {'location_status': 'invalid'})
+        self.assertGreaterEqual(invalid.count(), 1)
+        valid = apply_customer_location_filters(qs, {'location_status': 'valid'})
+        self.assertTrue(all(
+            (c.county and c.sub_county and c.ward)
+            for c in valid
+        ))
+        # County set + ward with unresolvable sub_county context.
+        self.assertEqual(
+            apply_customer_location_filters(
+                qs,
+                {
+                    'county': DEFAULT_COUNTY,
+                    'sub_county': 'GhostSubXYZ',
+                    'ward': DEFAULT_WARD,
+                },
+            ).count(),
+            0,
+        )
+        from unittest.mock import patch
+
+        from sales.customer_location_filters import annotate_location_issue
+
+        annotated = annotate_location_issue(
+            Customer(county='', sub_county='', ward='')
+        )
+        self.assertFalse(annotated['location_valid'])
+        self.assertTrue(annotated['location_issue'])
+
+        # County + sub + ward happy path filters in place (line 166).
+        self.assertGreaterEqual(
+            apply_customer_location_filters(
+                qs,
+                {
+                    'county': DEFAULT_COUNTY,
+                    'sub_county': DEFAULT_SUB_COUNTY,
+                    'ward': DEFAULT_WARD,
+                },
+            ).count(),
+            1,
+        )
+        with patch(
+            'sales.customer_location_filters.resolve_ward',
+            return_value=None,
+        ):
+            self.assertEqual(
+                apply_customer_location_filters(
+                    qs,
+                    {
+                        'county': DEFAULT_COUNTY,
+                        'sub_county': DEFAULT_SUB_COUNTY,
+                        'ward': DEFAULT_WARD,
+                    },
+                ).count(),
+                0,
+            )

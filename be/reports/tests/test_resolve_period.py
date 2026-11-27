@@ -93,3 +93,30 @@ class ResolvePeriodTestCase(TestCase):
         )
         self.assertTrue(label.startswith('checkpoint:'))
         self.assertEqual(start, closed_at)
+
+    def test_since_checkpoint_id_selects_closed_checkpoint(self):
+        from django.contrib.auth.models import User
+
+        from inventory.models import StockCheckpoint
+
+        user = User.objects.create_user(username='cp_id', password='x')
+        closed_at = timezone.now() - timedelta(days=3)
+        cp = StockCheckpoint.objects.create(
+            title='By id',
+            status=StockCheckpoint.STATUS_CLOSED,
+            opened_by=user,
+            closed_by=user,
+            closed_at=closed_at,
+        )
+        StockCheckpoint.objects.filter(pk=cp.pk).update(closed_at=closed_at)
+        start, end, label = self._get(
+            {'period': 'year', 'since_checkpoint_id': str(cp.pk)}
+        )
+        self.assertEqual(label, f'checkpoint:{cp.id}')
+        self.assertEqual(start, closed_at)
+        # Invalid id is ignored (falls through to period bounds).
+        start2, end2, label2 = self._get(
+            {'period': 'year', 'since_checkpoint_id': 'not-an-id'}
+        )
+        self.assertEqual(label2, 'year')
+        self.assertIsNotNone(start2)

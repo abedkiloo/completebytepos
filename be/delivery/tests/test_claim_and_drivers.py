@@ -124,7 +124,8 @@ class ClaimAndDriversAPITestCase(APITestCase):
         self.assertIn(self.driver.id, ids)
         self.assertIn(self.driver2.id, ids)
         self.assertIn(self.sales.id, ids)
-        self.assertIn(self.agent.id, ids)
+        # Field sales agents are not delivery assignees.
+        self.assertNotIn(self.agent.id, ids)
         self.assertNotIn(self.dispatch.id, ids)
         ann = next(r for r in res.data if r['id'] == self.driver.id)
         self.assertEqual(ann['display_name'], 'Ann Driver')

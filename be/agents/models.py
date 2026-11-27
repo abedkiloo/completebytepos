@@ -252,6 +252,11 @@ class FieldOrderLine(models.Model):
     def __str__(self):
         return f'Line {self.pk} order={self.order_id}'
 
+    @property
+    def line_total(self):
+        """quantity × unit_price for the cart line."""
+        return self.quantity * self.unit_price
+
 
 class FieldLoad(models.Model):
     """
@@ -408,7 +413,3 @@ class FieldLoadSale(models.Model):
             str: Load id and sale id. Under 80 characters.
         """
         return f'Load {self.load_id} sale {self.sale_id}'
-
-    @property
-    def line_total(self):
-        return self.quantity * self.unit_price

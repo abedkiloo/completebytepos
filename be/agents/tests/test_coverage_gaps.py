@@ -52,7 +52,11 @@ class AgentsCoverageGapTests(APITestCase):
             custom_role=Role.objects.get(name=ROLE_DELIVERY_AGENT),
             is_active=True,
         )
-        cls.customer = Customer.objects.create(name='Gap Cust', phone='0733')
+        cls.customer = Customer.objects.create(
+            name='Gap Cust',
+            phone='0733',
+            created_by=cls.agent,
+        )
         cls.product = Product.objects.create(
             name='Ballast', sku='BAL-1', price=80, cost=40, stock_quantity=1000,
         )

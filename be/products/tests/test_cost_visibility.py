@@ -147,6 +147,27 @@ class CostVisibilityTests(APITestCase):
         untouched = redact_cost_fields({'unit_cost': '77.77'})
         self.assertEqual(untouched['unit_cost'], '77.77')
 
+    def test_redact_keeps_pending_approval_proposed_cost(self):
+        factory = APIRequestFactory()
+        request = factory.get('/api/products/')
+        request.user = self.manager
+        payload = redact_cost_fields(
+            {
+                'cost': '77.77',
+                'price': '200.00',
+                'pending_approval': {
+                    'pending_price': True,
+                    'proposed_values': {'cost': '72.00'},
+                },
+            },
+            request=request,
+        )
+        self.assertNotIn('cost', payload)
+        self.assertEqual(
+            payload['pending_approval']['proposed_values']['cost'],
+            '72.00',
+        )
+
     def test_forty_rows_stay_without_cost_for_sales(self):
         self._auth(self.sales)
         response = self.client.get('/api/products/?page_size=50&search=Batch stand')

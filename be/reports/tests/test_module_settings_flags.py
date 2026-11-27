@@ -1,5 +1,7 @@
 """Unit coverage for reports module setting flags."""
 
+from unittest.mock import patch
+
 from django.test import TestCase
 
 from reports.module_settings import (
@@ -29,6 +31,7 @@ class ReportsModuleSettingsFlagTests(TestCase):
             'show_discount_in_reports',
             'show_tax_in_reports',
             'show_cost_and_profit',
+            'enable_product_reports',
         ):
             SettingsService.set('reports', key, True)
         super().tearDown()
@@ -57,6 +60,23 @@ class ReportsModuleSettingsFlagTests(TestCase):
         self.assertTrue(reports_action_enabled('trading_profit'))
         self.assertEqual(reports_action_label('trading_profit'), 'Financial reports')
         self.assertEqual(reports_action_label('sales_by_person'), 'Sales reports')
+
+    def test_product_trends_requires_product_reports(self):
+        from reports.module_settings import reports_product_trends_enabled
+
+        SettingsService.set('reports', 'enable_product_reports', False)
+        self.assertFalse(reports_product_trends_enabled())
+        SettingsService.set('reports', 'enable_product_reports', True)
+        with patch(
+            'reports.product_trends.product_trends_feature_enabled',
+            return_value=False,
+        ):
+            self.assertFalse(reports_product_trends_enabled())
+        with patch(
+            'reports.product_trends.product_trends_feature_enabled',
+            return_value=True,
+        ):
+            self.assertTrue(reports_product_trends_enabled())
 
     def test_apply_report_response_flags_strips_sensitive_fields(self):
         SettingsService.set('reports', 'show_discount_in_reports', False)
@@ -87,6 +107,13 @@ class ReportsModuleSettingsFlagTests(TestCase):
         self.assertNotIn('profit', out['monthly_breakdown'][0])
         self.assertNotIn('unit_cost', out['recent_movements'][0])
         self.assertNotIn('unit_cost', out['items'][0])
+        # Non-dict rows in cost lists stay as-is while dicts are stripped.
+        mixed = apply_report_response_flags({
+            'summary': {'basis': 'cash'},
+            'items': ['skip', {'unit_cost': 9, 'name': 'y'}],
+        })
+        self.assertEqual(mixed['items'][0], 'skip')
+        self.assertNotIn('unit_cost', mixed['items'][1])
         # Trading profit summary is preserved
         trading = apply_report_response_flags({
             'summary': {'basis': 'trading', 'net_profit': 50, 'cogs': 10},
