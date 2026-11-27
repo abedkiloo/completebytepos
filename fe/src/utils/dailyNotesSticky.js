@@ -46,9 +46,11 @@ export function noteKindLabel(note) {
 }
 
 export function noteBoardColumn(note) {
+  // Done always wins — Mark done must land in Past even if a stale
+  // board_column / in_progress flag is still on the client payload.
+  if (isNoteDone(note)) return 'past';
   const raw = (note?.board_column || '').toString().trim().toLowerCase();
   if (raw === 'todo' || raw === 'doing' || raw === 'past') return raw;
-  if (isNoteDone(note)) return 'past';
   if (note?.in_progress) return 'doing';
   return 'todo';
 }

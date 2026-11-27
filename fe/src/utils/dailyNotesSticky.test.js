@@ -95,6 +95,10 @@ describe('dailyNotesSticky', () => {
     expect(noteBoardColumn({ in_progress: true })).toBe('doing');
     expect(noteBoardColumn({ board_column: 'DOING' })).toBe('doing');
     expect(noteBoardColumn({})).toBe('todo');
+    // Done always wins over a stale Doing flag / column.
+    expect(
+      noteBoardColumn({ is_done: true, in_progress: true, board_column: 'doing' })
+    ).toBe('past');
     const rows = [
       { id: 1, is_done: false },
       { id: 2, in_progress: true },
