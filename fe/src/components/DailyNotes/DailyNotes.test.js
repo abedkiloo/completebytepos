@@ -20,6 +20,7 @@ jest.mock('../../services/api', () => ({
     delete: jest.fn(),
     staff: jest.fn(),
     roles: jest.fn(),
+    reviewers: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     patch: jest.fn(),
@@ -147,8 +148,21 @@ describe('DailyNotes', () => {
         ],
       },
     });
+    dailyNotesAPI.staff.mockResolvedValue({ data: [] });
+    dailyNotesAPI.roles.mockResolvedValue({ data: [] });
+    dailyNotesAPI.reviewers.mockResolvedValue({ data: [] });
     dailyNotesAPI.toggleDone.mockResolvedValue({
-      data: { id: 5, is_sticky: true, is_done: true, content: longContent, author: 9 },
+      data: {
+        id: 5,
+        title: 'Till',
+        is_sticky: true,
+        is_done: true,
+        in_progress: false,
+        board_column: 'past',
+        content: longContent,
+        author: 9,
+        assigned_to: 20,
+      },
     });
   });
 
@@ -169,6 +183,9 @@ describe('DailyNotes', () => {
     expect(content.className).toMatch(/max-h-48/);
     fireEvent.click(screen.getByLabelText(/Tick note Till/i));
     await waitFor(() => expect(dailyNotesAPI.toggleDone).toHaveBeenCalledWith(5));
+    await waitFor(() =>
+      expect(screen.getByTestId('daily-notes-column-past')).toHaveTextContent('Till')
+    );
   });
 
   test('opens a note-for-everyone form', async () => {

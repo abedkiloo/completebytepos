@@ -314,21 +314,23 @@ export default function DailyNotesBoard({
                           ) : null}
 
                           <div className="flex flex-wrap gap-1">
-                            {NOTE_BOARD_COLUMNS.filter((item) => item.id !== column.id).map(
-                              (item) => (
-                                <Button
-                                  key={item.id}
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 px-2 text-xs"
-                                  data-testid={`daily-note-move-${note.id}-${item.id}`}
-                                  onClick={() => onMove(note, item.id)}
-                                >
-                                  {item.title}
-                                </Button>
-                              )
-                            )}
+                            {canToggleDailyNote(note, currentUserId, viewAll)
+                              ? NOTE_BOARD_COLUMNS.filter((item) => item.id !== column.id).map(
+                                  (item) => (
+                                    <Button
+                                      key={item.id}
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 px-2 text-xs"
+                                      data-testid={`daily-note-move-${note.id}-${item.id}`}
+                                      onClick={() => onMove(note, item.id)}
+                                    >
+                                      {item.title}
+                                    </Button>
+                                  )
+                                )
+                              : null}
                             {canModifyEntry(note) ? (
                               <>
                                 <Button

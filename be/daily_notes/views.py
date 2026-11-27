@@ -78,6 +78,35 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
             return True
         return user_may_view_all_daily_notes(user)
 
+    def _board_column_only_move(self, data) -> bool:
+        """True when the body only moves the note between To do / Doing / Past."""
+        if not hasattr(data, 'keys'):
+            return False
+        keys = {str(k) for k in data.keys()}
+        return keys == {'board_column'} and data.get('board_column') in (
+            'todo',
+            'doing',
+            'past',
+        )
+
+    def update(self, request, *args, **kwargs):
+        """Authors edit freely; assignees may move board column only."""
+        instance = self.get_object()
+        if self._author_may_modify(instance):
+            return super(DailyAuthorScopedViewSetMixin, self).update(
+                request, *args, **kwargs
+            )
+        if self._board_column_only_move(request.data) and self._may_toggle_note(
+            instance
+        ):
+            return super(DailyAuthorScopedViewSetMixin, self).update(
+                request, *args, **kwargs
+            )
+        return Response(
+            {'error': 'You can only edit your own entries.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     @action(detail=False, methods=['get'], url_path='recent-dates')
     def recent_dates(self, request):
         if not user_may_access_daily_notes(request.user):
@@ -136,7 +165,10 @@ class DailyNoteViewSet(DailyAuthorScopedViewSetMixin, viewsets.ModelViewSet):
             )
         note.is_done = not note.is_done
         note.mark_done(done=note.is_done)
-        note.save(update_fields=['is_done', 'completed_at', 'updated_at'])
+        # Persist cleared ``in_progress`` so Mark done lands in Past and stays there.
+        note.save(
+            update_fields=['is_done', 'in_progress', 'completed_at', 'updated_at']
+        )
         return Response(self.get_serializer(note).data)
 
     @action(

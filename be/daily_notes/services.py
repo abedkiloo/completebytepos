@@ -224,13 +224,16 @@ def _apply_common_filters(qs, *, date_field: str, filters: dict | None, view_all
     status = filters.get('status')
     if day is not None:
         # Open items stay on every later day until they are acted on.
-        # Completed items stay on the day they belong to.
+        # Completed items stay on their origin day, and also on the day they
+        # were finished (so Mark done on a carried-over note keeps it in Past).
+        completed_today = Q(is_done=True, completed_at__date=day)
         if status == 'done':
-            qs = qs.filter(**{date_field: day, 'is_done': True})
+            qs = qs.filter(Q(**{date_field: day, 'is_done': True}) | completed_today)
         else:
             qs = qs.filter(
                 Q(**{date_field: day})
                 | Q(is_done=False, **{f'{date_field}__lt': day})
+                | completed_today
             )
             if status == 'open':
                 qs = qs.filter(is_done=False)
