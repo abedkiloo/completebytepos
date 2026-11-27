@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework import status
 
 from inventory.checkpoint_serializers import (
@@ -22,6 +23,7 @@ from inventory.checkpoint_services import (
     count_checkpoint_line,
     count_checkpoint_lines,
     open_checkpoint,
+    should_skip_stock_for_past_sale,
 )
 from inventory.models import (
     StockCheckpoint,
@@ -977,3 +979,215 @@ class TransferPairingGapTests(TestCase):
         )
         self.assertEqual(mv.unit_cost, self.product.cost)
         _ = out_mv  # created for pairing context
+
+
+class InventoryHundredPercentGapTests(TestCase):
+    """Close remaining gated inventory service / checkpoint misses."""
+
+    def setUp(self):
+        disable_maker_checker()
+        _seed_inventory_settings()
+        self.user = User.objects.create_superuser('inv100', 'i@x.co', 'x')
+        cat = Category.objects.create(name='Inv100 Cat', is_active=True)
+        self.product = Product.objects.create(
+            name='Inv100 P',
+            sku='INV100-P',
+            category=cat,
+            price=Decimal('20'),
+            cost=Decimal('8'),
+            stock_quantity=10,
+            track_stock=True,
+            is_active=True,
+        )
+        self.svc = StockMovementService()
+
+    def test_adjust_zero_and_negative_explicit_cost(self):
+        with self.assertRaises(ValidationError):
+            self.svc.adjust_stock(
+                product_id=self.product.id,
+                variant_id=None,
+                quantity=0,
+                user=self.user,
+            )
+        # Super Admin negative adjust with explicit unit_cost (line 320).
+        mv = self.svc.adjust_stock(
+            product_id=self.product.id,
+            variant_id=None,
+            quantity=-1,
+            user=self.user,
+            unit_cost=Decimal('7.25'),
+            notes='shrink',
+        )
+        self.assertEqual(mv.unit_cost, Decimal('7.25'))
+
+    def test_set_on_hand_count_validation_branches(self):
+        with self.assertRaises(ValidationError):
+            self.svc.set_on_hand_count(product_id=self.product.id, quantity=-1, user=self.user)
+        with self.assertRaises(ValidationError):
+            self.svc.set_on_hand_count(product_id=999999, quantity=1, user=self.user)
+        self.assertIsNone(
+            self.svc.set_on_hand_count(
+                product_id=self.product.id,
+                quantity=self.product.stock_quantity,
+                user=self.user,
+            )
+        )
+
+        size = Size.objects.create(name='M100', code='M100')
+        color = Color.objects.create(name='Blue100', hex_code='#00F')
+        variant_product = Product.objects.create(
+            name='Inv100 Var',
+            sku='INV100-V',
+            category=self.product.category,
+            price=Decimal('30'),
+            cost=Decimal('10'),
+            stock_quantity=0,
+            track_stock=True,
+            has_variants=True,
+            is_active=True,
+        )
+        variant = ProductVariant.objects.create(
+            product=variant_product,
+            size=size,
+            color=color,
+            sku='INV100-V-M',
+            stock_quantity=4,
+            is_active=True,
+        )
+        with self.assertRaises(ValidationError):
+            self.svc.set_on_hand_count(
+                product_id=variant_product.id, quantity=5, user=self.user
+            )
+        with self.assertRaises(ValidationError):
+            self.svc.set_on_hand_count(
+                product_id=variant_product.id,
+                variant_id=999999,
+                quantity=5,
+                user=self.user,
+            )
+        moved = self.svc.set_on_hand_count(
+            product_id=variant_product.id,
+            variant_id=variant.id,
+            quantity=6,
+            user=self.user,
+        )
+        self.assertIsNotNone(moved)
+
+    def test_purchase_invalid_price_mode(self):
+        with self.assertRaises(ValidationError):
+            self.svc.purchase_stock(
+                product_id=self.product.id,
+                variant_id=None,
+                quantity=1,
+                unit_cost=Decimal('8'),
+                price_mode='weird',
+                user=self.user,
+            )
+
+    def test_paired_transfer_branch_name_and_fallback(self):
+        from settings.models import Branch, Tenant
+
+        tenant = Tenant.objects.create(
+            name='Inv100 T', code='I100', country='Kenya',
+            owner=self.user, created_by=self.user,
+        )
+        src = Branch.objects.create(
+            tenant=tenant, branch_code='S100', name='Alpha Yard',
+            city='Nairobi', country='Kenya', is_active=True,
+            is_headquarters=True, created_by=self.user,
+        )
+        dst = Branch.objects.create(
+            tenant=tenant, branch_code='D100', name='Beta Yard',
+            city='Nairobi', country='Kenya', is_active=True, created_by=self.user,
+        )
+        # Out without a notes link; inbound without "Transfer in from" — force
+        # the branch-name and notes__icontains Transfer-out fallbacks.
+        out_for_branch = StockMovement.objects.create(
+            branch=src,
+            product=self.product,
+            movement_type='transfer',
+            quantity=-2,
+            notes='Transfer out',
+            user=self.user,
+        )
+        in_with_branch = StockMovement.objects.create(
+            branch=dst,
+            product=self.product,
+            movement_type='transfer',
+            quantity=2,
+            notes='Received from Alpha Yard dock',
+            user=self.user,
+        )
+        # Outbound + branch.name notes filter (line 710).
+        paired_from_out = self.svc.find_paired_transfer_movement(out_for_branch)
+        self.assertEqual(paired_from_out.id, in_with_branch.id)
+
+        out_plain = StockMovement.objects.create(
+            branch=src,
+            product=self.product,
+            movement_type='transfer',
+            quantity=-1,
+            notes='Transfer out',
+            user=self.user,
+        )
+        in_plain = StockMovement.objects.create(
+            branch=dst,
+            product=self.product,
+            movement_type='transfer',
+            quantity=1,
+            notes='Inbound stock',
+            user=self.user,
+        )
+        # Inbound without "Transfer in from …" uses the Transfer-out fallback (729).
+        paired_from_in = self.svc.find_paired_transfer_movement(in_plain)
+        self.assertEqual(paired_from_in.id, out_plain.id)
+
+        # Undoing an outbound needs stock back on the source (line 765).
+        self.product.stock_quantity = 0
+        self.product.save(update_fields=['stock_quantity'])
+        out_plain.product.refresh_from_db()
+        with self.assertRaises(ValidationError):
+            self.svc.undo_transfer(out_plain, user=self.user)
+
+    def test_checkpoint_sale_freeze_guards(self):
+        from datetime import timedelta
+
+        self.assertFalse(
+            should_skip_stock_for_past_sale(
+                occurred_at=None, product_id=self.product.id, variant_id=None
+            )
+        )
+        self.assertFalse(
+            should_skip_stock_for_past_sale(
+                occurred_at=timezone.now(), product_id=0, variant_id=None
+            )
+        )
+        cp = open_checkpoint(
+            user=self.user,
+            title='Freeze check',
+            product_ids=[self.product.id],
+        )
+        size = Size.objects.create(name='S100', code='S100')
+        color = Color.objects.create(name='Red100', hex_code='#F00')
+        variant = ProductVariant.objects.create(
+            product=self.product,
+            size=size,
+            color=color,
+            sku='INV100-P-S',
+            stock_quantity=2,
+            is_active=True,
+        )
+        line = cp.lines.filter(product=self.product, variant__isnull=True).first()
+        self.assertIsNotNone(line)
+        line.status = StockCheckpointLine.STATUS_COUNTED
+        line.counted_at = timezone.now()
+        line.counted_qty = 10
+        line.save(update_fields=['status', 'counted_at', 'counted_qty'])
+        earlier = line.counted_at - timedelta(minutes=5)
+        self.assertTrue(
+            should_skip_stock_for_past_sale(
+                occurred_at=earlier,
+                product_id=self.product.id,
+                variant_id=variant.id,
+            )
+        )

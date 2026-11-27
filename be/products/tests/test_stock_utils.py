@@ -293,3 +293,18 @@ class SyncProductStockFromVariantsTests(TestCase):
         sync_product_stock_from_variants(self.product)
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock_quantity, 10)
+
+    def test_sellable_unit_cost_falls_back_when_variant_costs_missing(self):
+        self.product.cost = Decimal('12.00')
+        self.product.has_variants = True
+        self.product.save(update_fields=['cost', 'has_variants'])
+        ProductVariant.objects.create(
+            product=self.product,
+            size=self.size,
+            color=self.color_a,
+            sku='SHIRT-ZERO',
+            stock_quantity=1,
+            cost=Decimal('0.00'),
+            is_active=True,
+        )
+        self.assertEqual(sellable_unit_cost(self.product), Decimal('12.00'))

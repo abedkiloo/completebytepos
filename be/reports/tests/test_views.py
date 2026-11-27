@@ -79,7 +79,14 @@ class ReportsViewsTestCase(ManagerAPITestCase):
         self.assertIn('week', response.data)
         self.assertEqual(len(response.data['week']['days']), 7)
         self.assertIn('growth', response.data)
-        self.assertIn('profit', response.data)
+        self.assertIn('sales', response.data['growth'])
+        # Profit/cost KPIs are stripped when the viewer cannot see cost.
+        from products.cost_access import user_may_see_cost
+
+        if user_may_see_cost(self.manager_user):
+            self.assertIn('profit', response.data)
+        else:
+            self.assertNotIn('profit', response.data)
         self.assertGreaterEqual(response.data['today']['sales_count'], 1)
         self.assertGreaterEqual(response.data['week']['sales_count'], 1)
 

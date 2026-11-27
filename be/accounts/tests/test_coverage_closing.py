@@ -394,7 +394,10 @@ class ViewsetExceptionBranches(SuperAdminAPITestCase):
         django_request = APIRequestFactory().get('/?q=x')
         django_request.user = self.admin
         request = Request(django_request)
-        with patch('accounts.views.User.objects.filter', side_effect=Exception('x')):
+        with patch(
+            'accounts.views._user_can_manage_permissions',
+            return_value=True,
+        ), patch('accounts.views.User.objects.filter', side_effect=Exception('x')):
             view.request = request
             view.format_kwarg = None
             view.action = 'search'

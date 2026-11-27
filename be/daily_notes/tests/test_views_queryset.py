@@ -32,7 +32,8 @@ class DailyNotesQuerysetTests(ManagerAPITestCase):
             note_date=other,
             content='Old',
             is_done=True,
-            completed_at=timezone.now(),
+            # Finished on the origin day — must not appear on today's board.
+            completed_at=timezone.now() - timedelta(days=370),
             author=self.manager_user,
         )
         response = self.client.get(
@@ -58,7 +59,7 @@ class DailyNotesQuerysetTests(ManagerAPITestCase):
             title='Closed then',
             content='Finished',
             is_done=True,
-            completed_at=timezone.now(),
+            completed_at=timezone.now() - timedelta(days=3),
             author=self.manager_user,
         )
         DailyNote.objects.create(

@@ -294,8 +294,11 @@ class StockMovementService(BaseService):
 
         sets_cost = user is None or user_is_super_admin(user)
         if quantity > 0:
-            if user is not None and not sets_cost:
-                unit_cost = catalog_unit_cost(product, variant)
+            catalog = catalog_unit_cost(product, variant)
+            # Non–Super Admins cannot override a positive posted cost, but when
+            # catalog cost is zero they must still enter a batch cost to intake.
+            if user is not None and not sets_cost and catalog > 0:
+                unit_cost = catalog
             else:
                 unit_cost = resolve_intake_unit_cost(
                     product=product,

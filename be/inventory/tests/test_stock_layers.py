@@ -118,9 +118,10 @@ class StockLayersFIFOTests(TestCase):
         self.assertEqual(items[0].unit_price, Decimal('500.00'))
         self.assertEqual(items[0].unit_cost, Decimal('400.00'))
         self.assertEqual(items[1].quantity, 5)
-        self.assertEqual(items[1].unit_price, Decimal('450.00'))
+        # Cheaper later layer in the same sale is charged at the older sell price.
+        self.assertEqual(items[1].unit_price, Decimal('500.00'))
         self.assertEqual(items[1].unit_cost, Decimal('350.00'))
-        self.assertEqual(sale.subtotal, Decimal('20') * Decimal('500') + Decimal('5') * Decimal('450'))
+        self.assertEqual(sale.subtotal, Decimal('25') * Decimal('500'))
 
     def test_valuation_sums_open_layers(self):
         self.inv.purchase_stock(

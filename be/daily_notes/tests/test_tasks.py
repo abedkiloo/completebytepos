@@ -66,7 +66,7 @@ class DailyTaskAPITests(ManagerAPITestCase):
             task_date=origin,
             title='Done then',
             is_done=True,
-            completed_at=timezone.now(),
+            completed_at=timezone.now() - timedelta(days=2),
             author=self.manager_user,
             assigned_to=self.manager_user,
         )

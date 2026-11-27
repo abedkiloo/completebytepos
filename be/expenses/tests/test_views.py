@@ -253,6 +253,7 @@ class ExpenseViewsTestCase(ManagerAPITestCase):
         expense = Expense.objects.create(
             category=self.cat, description='Water bill', amount=Decimal('90.00'),
             payment_method='cash', expense_date=timezone.localdate(), status='pending',
+            created_by=self.manager_user,
         )
         approve = self.client.post(f'/api/expenses/{expense.id}/approve/')
         self.assertEqual(approve.status_code, status.HTTP_403_FORBIDDEN, approve.data)

@@ -73,7 +73,8 @@ class SalesHistoryExportTests(ManagerAPITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'application/pdf')
         self.assertTrue(response.content.startswith(b'%PDF'))
-        self.assertIn('sales-history', response['Content-Disposition'])
+        # Sales workbooks use the short branded filename (sale.pdf / sale.xlsx).
+        self.assertIn('sale.pdf', response['Content-Disposition'])
 
     def test_export_excel(self):
         from io import BytesIO

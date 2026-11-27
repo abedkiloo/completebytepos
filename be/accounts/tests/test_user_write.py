@@ -2,9 +2,15 @@
 
 from django.contrib.auth.models import User
 from django.test import TestCase
+from rest_framework.exceptions import PermissionDenied
 
 from accounts.models import UserProfile, Role
-from accounts.user_write import prepare_user_write_data, apply_profile_updates
+from accounts.user_write import (
+    apply_profile_updates,
+    custom_role_name,
+    prepare_user_write_data,
+    strip_privilege_escalation,
+)
 
 
 class PrepareUserWriteDataTests(TestCase):
@@ -93,3 +99,50 @@ class ApplyProfileUpdatesTests(TestCase):
         UserProfile.objects.create(user=self.user, role='cashier')
         apply_profile_updates(self.user, {})
         self.assertEqual(self.user.profile.role, 'cashier')
+
+
+class StripPrivilegeAndCustomRoleNameTests(TestCase):
+    def setUp(self):
+        self.manager = User.objects.create_user('mgr_write', password='x')
+        UserProfile.objects.create(user=self.manager, role='manager')
+        self.admin = User.objects.create_superuser('sa_write', 'sa@x.co', 'x')
+
+    def test_custom_role_name_invalid_id_and_missing(self):
+        self.assertIsNone(custom_role_name(None))
+        self.assertIsNone(custom_role_name(''))
+        self.assertIsNone(custom_role_name('not-int'))
+        self.assertIsNone(custom_role_name(object()))
+        self.assertIsNone(custom_role_name(999999))
+        role = Role.objects.create(name='Floor Lead', is_active=True)
+        self.assertEqual(custom_role_name(role.id), 'Floor Lead')
+        self.assertEqual(custom_role_name(role), 'Floor Lead')
+
+    def test_strip_privilege_rejects_non_admin_escalation(self):
+        with self.assertRaises(PermissionDenied):
+            strip_privilege_escalation(
+                {'is_superuser': True},
+                {},
+                actor=self.manager,
+            )
+        with self.assertRaises(PermissionDenied):
+            strip_privilege_escalation(
+                {},
+                {'role': 'super_admin'},
+                actor=self.manager,
+            )
+        sa_role = Role.objects.create(name='Super Admin', is_active=True)
+        with self.assertRaises(PermissionDenied):
+            strip_privilege_escalation(
+                {},
+                {'custom_role_id': sa_role.id},
+                actor=self.manager,
+            )
+        # False privilege flags are stripped silently for non-admins.
+        cleared = {'is_staff': False, 'is_superuser': 'false'}
+        strip_privilege_escalation(cleared, {}, actor=self.manager)
+        self.assertNotIn('is_staff', cleared)
+        self.assertNotIn('is_superuser', cleared)
+        # Super admin may keep privilege fields.
+        payload = {'is_staff': True}
+        strip_privilege_escalation(payload, {'role': 'super_admin'}, actor=self.admin)
+        self.assertTrue(payload['is_staff'])

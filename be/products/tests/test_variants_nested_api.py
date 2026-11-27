@@ -108,5 +108,7 @@ class NestedVariantsAPITests(TestCase):
         variants = list(product.variants.order_by('id').all())
         # Two variants should now exist
         self.assertEqual(len(variants), 2)
-        # Stock sync: parent = sum(3 + 4) = 7
-        self.assertEqual(product.stock_quantity, 7)
+        self.assertTrue(any(v.sku == 'API-VAR-2-DEF-NEW' for v in variants))
+        # Nested product PATCH strips stock_quantity (intake goes through inventory).
+        # Parent stock stays the sum of unchanged variant on-hand.
+        self.assertEqual(product.stock_quantity, 2)
