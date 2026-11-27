@@ -20,10 +20,14 @@ import {
 import { applyCustomerFormFieldUpdate } from '../../utils/customerFormFieldUpdate';
 import {
   canEditCustomer,
+  customerHasLocationPing,
+  customerMapsUrl,
   customersShowCustomerType,
   customersShowNotes,
   customersShowStatus,
   customersShowTaxId,
+  formatCustomerLocationPing,
+  formatCustomerPlaceLine,
 } from '../../utils/customerDisplay';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { useStoreSettings } from '../../hooks/useStoreSettings';
@@ -308,18 +312,34 @@ export default function CustomerDetailDialog({
                     {customer.phone}
                   </p>
                 ) : null}
-                {customer.ward || customer.sub_county || customer.county || customer.city ? (
-                  <p className="inline-flex items-center gap-1.5 text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5" />
-                    {[
-                      [customer.ward, customer.sub_county, customer.county || customer.city]
-                        .filter(Boolean)
-                        .join(', '),
-                      customer.country,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </p>
+                {formatCustomerPlaceLine(customer) || customerHasLocationPing(customer) ? (
+                  <div className="space-y-0.5 text-muted-foreground">
+                    {formatCustomerPlaceLine(customer) ? (
+                      <p className="inline-flex items-start gap-1.5">
+                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{formatCustomerPlaceLine(customer)}</span>
+                      </p>
+                    ) : null}
+                    {customerHasLocationPing(customer) ? (
+                      <p className="inline-flex items-start gap-1.5 pl-5">
+                        <span>
+                          Pinned:{' '}
+                          {customerMapsUrl(customer) ? (
+                            <a
+                              href={customerMapsUrl(customer)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary underline-offset-2 hover:underline"
+                            >
+                              {formatCustomerLocationPing(customer)}
+                            </a>
+                          ) : (
+                            formatCustomerLocationPing(customer)
+                          )}
+                        </span>
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
               <div className="space-y-2">

@@ -323,6 +323,46 @@ class CustomerDetailSalesPersonaTests(SalesAPITestCase):
         self.assertEqual(response.data['customer']['name'], 'Sales View Cust')
         self.assertEqual(response.data['orders'], [])
         self.assertEqual(response.data['ledger'], [])
+        self.assertIsNone(response.data['customer'].get('latitude'))
+        self.assertIsNone(response.data['customer'].get('longitude'))
+
+    def test_detail_includes_snapped_location_ping(self):
+        """Corrected functionality: detail profile exposes the field-picked GPS pin."""
+        self.customer.latitude = Decimal('-1.2921000')
+        self.customer.longitude = Decimal('36.8219000')
+        self.customer.location_accuracy = 14.5
+        self.customer.address = 'Near stage'
+        self.customer.county = 'Nairobi'
+        self.customer.save(
+            update_fields=[
+                'latitude',
+                'longitude',
+                'location_accuracy',
+                'address',
+                'county',
+            ]
+        )
+        response = self.client.get(f'/api/sales/customers/{self.customer.id}/detail/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        profile = response.data['customer']
+        self.assertAlmostEqual(profile['latitude'], -1.2921, places=4)
+        self.assertAlmostEqual(profile['longitude'], 36.8219, places=4)
+        self.assertAlmostEqual(profile['location_accuracy'], 14.5, places=1)
+        self.assertEqual(profile['address'], 'Near stage')
+        self.assertEqual(profile['county'], 'Nairobi')
+
+    def test_detail_location_ping_stress_and_idor(self):
+        """Stress + security: many detail reads stay stable; unknown id is not leaked."""
+        self.customer.latitude = Decimal('-1.3000000')
+        self.customer.longitude = Decimal('36.8000000')
+        self.customer.save(update_fields=['latitude', 'longitude'])
+        for _ in range(20):
+            response = self.client.get(f'/api/sales/customers/{self.customer.id}/detail/')
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertAlmostEqual(response.data['customer']['latitude'], -1.3, places=4)
+        missing = self.client.get('/api/sales/customers/999999991/detail/')
+        self.assertIn(missing.status_code, (status.HTTP_404_NOT_FOUND, status.HTTP_403_FORBIDDEN))
+        self.assertNotIn('-1.3', str(missing.data))
 
 
 class CustomerCallHistoryTests(ManagerAPITestCase):

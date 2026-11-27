@@ -7,6 +7,10 @@ import {
   customersAllowQuickAddAtPos,
   canQuickAddCustomerAtPos,
   canEditCustomer,
+  customerHasLocationPing,
+  customerMapsUrl,
+  formatCustomerLocationPing,
+  formatCustomerPlaceLine,
 } from './customerDisplay';
 
 describe('customerDisplay', () => {
@@ -53,5 +57,27 @@ describe('customerDisplay', () => {
       canQuickAddCustomerAtPos(false, settings, [{ module: 'customers', action: 'create' }])
     ).toBe(true);
     expect(canQuickAddCustomerAtPos(true, settings, [])).toBe(true);
+  });
+
+  test('formats snapped GPS pin and place line for customer details', () => {
+    expect(customerHasLocationPing({})).toBe(false);
+    expect(customerHasLocationPing({ latitude: -1.2921, longitude: 36.8219 })).toBe(true);
+    expect(formatCustomerLocationPing({ latitude: -1.2921, longitude: 36.8219 })).toBe(
+      '-1.29210, 36.82190'
+    );
+    expect(customerMapsUrl({ latitude: -1.2921, longitude: 36.8219 })).toBe(
+      'https://maps.google.com/?q=-1.2921,36.8219'
+    );
+    expect(
+      formatCustomerPlaceLine({
+        address: 'Near stage',
+        ward: 'Kilimani',
+        sub_county: 'Westlands',
+        county: 'Nairobi',
+        country: 'Kenya',
+      })
+    ).toBe('Near stage · Kilimani, Westlands, Nairobi · Kenya');
+    expect(formatCustomerPlaceLine({})).toBe('');
+    expect(customerMapsUrl({ latitude: 'bad', longitude: 36 })).toBeNull();
   });
 });

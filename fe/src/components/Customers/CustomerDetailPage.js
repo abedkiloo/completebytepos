@@ -47,10 +47,14 @@ import {
 import { applyCustomerFormFieldUpdate } from '../../utils/customerFormFieldUpdate';
 import {
   canEditCustomer,
+  customerHasLocationPing,
+  customerMapsUrl,
   customersShowCustomerType,
   customersShowNotes,
   customersShowStatus,
   customersShowTaxId,
+  formatCustomerLocationPing,
+  formatCustomerPlaceLine,
 } from '../../utils/customerDisplay';
 import { useModuleSettings } from '../../hooks/useModuleSettings';
 import { isModuleFeatureEnabled } from '../../utils/moduleFeatures';
@@ -821,25 +825,38 @@ export default function CustomerDetailPage() {
                 </div>
               </div>
             )}
-            {(customer.address ||
-              customer.ward ||
-              customer.sub_county ||
-              customer.county ||
-              customer.city) && (
+            {(formatCustomerPlaceLine(customer) ||
+              customerHasLocationPing(customer)) && (
               <div className="flex gap-2">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 <div>
-                  <dt className="text-muted-foreground">Address</dt>
-                  <dd>
-                    {[
-                      customer.address,
-                      [customer.ward, customer.sub_county, customer.county || customer.city]
-                        .filter(Boolean)
-                        .join(', '),
-                      customer.country,
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
+                  <dt className="text-muted-foreground">Location</dt>
+                  <dd className="space-y-1">
+                    {formatCustomerPlaceLine(customer) ? (
+                      <span className="block">{formatCustomerPlaceLine(customer)}</span>
+                    ) : null}
+                    {customerHasLocationPing(customer) ? (
+                      <span className="block">
+                        <span className="text-muted-foreground">Pinned: </span>
+                        {customerMapsUrl(customer) ? (
+                          <a
+                            href={customerMapsUrl(customer)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary underline-offset-2 hover:underline"
+                          >
+                            {formatCustomerLocationPing(customer)}
+                          </a>
+                        ) : (
+                          formatCustomerLocationPing(customer)
+                        )}
+                        {Number.isFinite(Number(customer.location_accuracy)) ? (
+                          <span className="text-muted-foreground">
+                            {` · ±${Math.round(Number(customer.location_accuracy))} m`}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
                   </dd>
                 </div>
               </div>

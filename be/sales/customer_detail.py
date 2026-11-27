@@ -150,7 +150,38 @@ def serialize_ledger_entry(txn: CustomerWalletTransaction) -> Dict[str, Any]:
     }
 
 
+def _coord_or_none(value) -> Optional[float]:
+    """Return a float coordinate, or None when missing/invalid.
+
+    Args:
+        value: Decimal, float, int, or string from ``Customer.latitude`` /
+            ``longitude``. Empty and non-numeric values become None.
+
+    Returns:
+        Finite float, or None when the ping was never snapped.
+    """
+    if value is None or value == '':
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:  # NaN
+        return None
+    return number
+
+
 def _serialize_customer_profile(customer: Customer) -> Dict[str, Any]:
+    """Build the customer card payload for the detail screen.
+
+    Args:
+        customer: Persisted ``Customer`` row (1 row). GPS fields are included
+            when a field app snapped a pin (lat −90..90, lng −180..180).
+
+    Returns:
+        Dict with contact, Kenya place fields, wallet standing, and optional
+        ``latitude`` / ``longitude`` / ``location_accuracy`` (metres, 0+).
+    """
     wallet_balance = _q(customer.wallet_balance)
     wallet_debt = _debt_from_balance(wallet_balance)
     wallet_credit = wallet_balance if wallet_balance > 0 else Decimal('0.00')
@@ -158,6 +189,14 @@ def _serialize_customer_profile(customer: Customer) -> Dict[str, Any]:
     standing = 'debt' if wallet_debt > 0 or invoice_outstanding > 0 else 'good'
     if wallet_credit > 0 and wallet_debt == 0 and invoice_outstanding == 0:
         standing = 'credit'
+
+    latitude = _coord_or_none(getattr(customer, 'latitude', None))
+    longitude = _coord_or_none(getattr(customer, 'longitude', None))
+    accuracy = getattr(customer, 'location_accuracy', None)
+    try:
+        location_accuracy = float(accuracy) if accuracy is not None else None
+    except (TypeError, ValueError):
+        location_accuracy = None
 
     return {
         'id': customer.id,
@@ -172,6 +211,9 @@ def _serialize_customer_profile(customer: Customer) -> Dict[str, Any]:
         'ward': customer.ward or '',
         'address': customer.address or '',
         'country': customer.country or '',
+        'latitude': latitude,
+        'longitude': longitude,
+        'location_accuracy': location_accuracy,
         'tax_id': customer.tax_id or '',
         'notes': customer.notes or '',
         'owner_name': customer.owner_name or '',

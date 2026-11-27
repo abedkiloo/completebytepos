@@ -91,3 +91,56 @@ export function canQuickAddCustomerAtPos(
       (p.module === 'customers' && p.action === 'create')
   );
 }
+
+/**
+ * True when the customer row has a snapped map pin (lat −90..90, lng −180..180).
+ *
+ * @param {object|null|undefined} customer
+ * @returns {boolean}
+ */
+export function customerHasLocationPing(customer) {
+  if (!customer) return false;
+  const lat = Number(customer.latitude);
+  const lng = Number(customer.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng);
+}
+
+/**
+ * Human-readable GPS coordinates for detail cards.
+ *
+ * @param {object|null|undefined} customer
+ * @returns {string} Empty when no ping; otherwise `"lat, lng"` with 5 decimals.
+ */
+export function formatCustomerLocationPing(customer) {
+  if (!customerHasLocationPing(customer)) return '';
+  const lat = Number(customer.latitude).toFixed(5);
+  const lng = Number(customer.longitude).toFixed(5);
+  return `${lat}, ${lng}`;
+}
+
+/**
+ * Open-maps URL for a snapped pin (max ~80 chars).
+ *
+ * @param {object|null|undefined} customer
+ * @returns {string|null}
+ */
+export function customerMapsUrl(customer) {
+  if (!customerHasLocationPing(customer)) return null;
+  const lat = Number(customer.latitude);
+  const lng = Number(customer.longitude);
+  return `https://maps.google.com/?q=${lat},${lng}`;
+}
+
+/**
+ * Place line from address + Kenya admin units (no GPS).
+ *
+ * @param {object|null|undefined} customer
+ * @returns {string}
+ */
+export function formatCustomerPlaceLine(customer) {
+  if (!customer) return '';
+  const admin = [customer.ward, customer.sub_county, customer.county || customer.city]
+    .filter(Boolean)
+    .join(', ');
+  return [customer.address, admin, customer.country].filter(Boolean).join(' · ');
+}
